@@ -1,0 +1,109 @@
+name: novudesk
+
+services:
+  # ─── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: novudesk
+      POSTGRES_USER: novudesk
+      POSTGRES_PASSWORD: novudesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novudesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── MailHog (SMTP capture) ──────────────────────────────────
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI → http://localhost:8025
+
+  # ─── MinIO (S3-compatible object storage) ───────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web UI → http://localhost:9001
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── API (Go backend) ────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.dev.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      REDIS_ADDR: redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      S3_ENDPOINT: http://minio:9000
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./apps/api:/app
+      - api_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    working_dir: /app
+
+  # ─── Web (Svelte frontend) ───────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.dev.Dockerfile
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ""
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    working_dir: /app
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  api_uploads:

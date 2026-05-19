@@ -1,0 +1,43 @@
+# Binaries
+apps/api/bin/
+apps/api/tmp/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+vendor/
+
+# Node
+node_modules/
+apps/web/.svelte-kit/
+apps/web/build/
+apps/web/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Uploads (local dev)
+apps/api/uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+.docker/
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+*.coverprofile

@@ -1,0 +1,111 @@
+{
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "create": "Criar",
+    "search": "Buscar",
+    "loading": "Carregando...",
+    "error": "Erro",
+    "success": "Sucesso",
+    "confirm": "Confirmar",
+    "back": "Voltar",
+    "close": "Fechar",
+    "yes": "Sim",
+    "no": "Não",
+    "actions": "Ações",
+    "filter": "Filtrar",
+    "clear": "Limpar",
+    "noResults": "Nenhum resultado encontrado"
+  },
+  "auth": {
+    "login": "Entrar",
+    "logout": "Sair",
+    "register": "Criar conta",
+    "email": "E-mail",
+    "password": "Senha",
+    "fullName": "Nome completo",
+    "orgSlug": "Identificador da organização",
+    "forgotPassword": "Esqueci minha senha",
+    "noAccount": "Não tem uma conta?",
+    "hasAccount": "Já tem uma conta?",
+    "loginError": "E-mail ou senha inválidos"
+  },
+  "nav": {
+    "dashboard": "Painel",
+    "tickets": "Tickets",
+    "teams": "Times",
+    "settings": "Configurações",
+    "admin": "Administração"
+  },
+  "tickets": {
+    "title": "Tickets",
+    "new": "Novo Ticket",
+    "search": "Buscar tickets...",
+    "number": "Nº",
+    "subject": "Assunto",
+    "statusLabel": "Status",
+    "priorityLabel": "Prioridade",
+    "assignee": "Responsável",
+    "team": "Time",
+    "created": "Criado em",
+    "updated": "Atualizado",
+    "noTickets": "Nenhum ticket encontrado",
+    "status": {
+      "open": "Aberto",
+      "pending": "Pendente",
+      "on_hold": "Em espera",
+      "resolved": "Resolvido",
+      "closed": "Fechado"
+    },
+    "priority": {
+      "low": "Baixa",
+      "normal": "Normal",
+      "high": "Alta",
+      "urgent": "Urgente"
+    },
+    "tabs": {
+      "all": "Todos",
+      "open": "Abertos",
+      "pending": "Pendentes",
+      "resolved": "Resolvidos"
+    },
+    "form": {
+      "title": "Título",
+      "description": "Descrição",
+      "titlePlaceholder": "Descreva o problema resumidamente",
+      "descriptionPlaceholder": "Forneça mais detalhes sobre o problema...",
+      "createSuccess": "Ticket criado com sucesso"
+    },
+    "comments": {
+      "title": "Comentários",
+      "internal": "Nota interna",
+      "public": "Resposta pública",
+      "placeholder": "Escreva uma resposta...",
+      "internalPlaceholder": "Nota interna (visível apenas para agentes)...",
+      "send": "Enviar"
+    }
+  },
+  "teams": {
+    "title": "Times",
+    "new": "Novo Time",
+    "members": "Membros",
+    "noTeams": "Nenhum time criado ainda"
+  },
+  "settings": {
+    "title": "Configurações",
+    "organization": "Organização",
+    "members": "Membros",
+    "roles": "Funções",
+    "sla": "SLA",
+    "notifications": "Notificações"
+  },
+  "dashboard": {
+    "title": "Painel",
+    "openTickets": "Tickets abertos",
+    "resolvedToday": "Resolvidos hoje",
+    "slaBreached": "SLA violado",
+    "avgResponseTime": "Tempo médio de resposta"
+  }
+}

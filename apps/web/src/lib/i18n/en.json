@@ -1,0 +1,111 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "confirm": "Confirm",
+    "back": "Back",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "actions": "Actions",
+    "filter": "Filter",
+    "clear": "Clear",
+    "noResults": "No results found"
+  },
+  "auth": {
+    "login": "Sign in",
+    "logout": "Sign out",
+    "register": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "fullName": "Full name",
+    "orgSlug": "Organization identifier",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "loginError": "Invalid email or password"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "tickets": "Tickets",
+    "teams": "Teams",
+    "settings": "Settings",
+    "admin": "Administration"
+  },
+  "tickets": {
+    "title": "Tickets",
+    "new": "New Ticket",
+    "search": "Search tickets...",
+    "number": "#",
+    "subject": "Subject",
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "team": "Team",
+    "created": "Created",
+    "updated": "Updated",
+    "noTickets": "No tickets found",
+    "status": {
+      "open": "Open",
+      "pending": "Pending",
+      "on_hold": "On hold",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "priority": {
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "tabs": {
+      "all": "All",
+      "open": "Open",
+      "pending": "Pending",
+      "resolved": "Resolved"
+    },
+    "form": {
+      "title": "Title",
+      "description": "Description",
+      "titlePlaceholder": "Briefly describe the problem",
+      "descriptionPlaceholder": "Provide more details about the issue...",
+      "createSuccess": "Ticket created successfully"
+    },
+    "comments": {
+      "title": "Comments",
+      "internal": "Internal note",
+      "public": "Public reply",
+      "placeholder": "Write a reply...",
+      "internalPlaceholder": "Internal note (visible to agents only)...",
+      "send": "Send"
+    }
+  },
+  "teams": {
+    "title": "Teams",
+    "new": "New Team",
+    "members": "Members",
+    "noTeams": "No teams created yet"
+  },
+  "settings": {
+    "title": "Settings",
+    "organization": "Organization",
+    "members": "Members",
+    "roles": "Roles",
+    "sla": "SLA",
+    "notifications": "Notifications"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "openTickets": "Open tickets",
+    "resolvedToday": "Resolved today",
+    "slaBreached": "SLA breached",
+    "avgResponseTime": "Avg. response time"
+  }
+}

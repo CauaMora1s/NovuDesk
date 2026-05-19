@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Frontend ─────────────────────────────────────────────────
+  frontend:
+    name: Frontend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/package.json
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+        env:
+          VITE_API_URL: http://localhost:8080
+
+  # ─── Backend ──────────────────────────────────────────────────
+  backend:
+    name: Backend (lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+          cache-dependency-path: apps/api/go.sum
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.61.0
+          working-directory: apps/api
+          args: --timeout=5m
+
+      - name: Run tests
+        run: go test ./... -race -timeout 120s
+
+      - name: Build binary
+        run: go build -o /dev/null ./cmd/server
+
+  # ─── Migrations ───────────────────────────────────────────────
+  migrations:
+    name: Migrations (up/down/up)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: novudesk_test
+          POSTGRES_USER: novudesk
+          POSTGRES_PASSWORD: novudesk
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@latest
+
+      - name: Migrate up
+        run: goose -dir apps/api/migrations postgres "host=localhost port=5432 dbname=novudesk_test user=novudesk password=novudesk sslmode=disable" up
+
+      - name: Migrate down (all)
+        run: goose -dir apps/api/migrations postgres "host=localhost port=5432 dbname=novudesk_test user=novudesk password=novudesk sslmode=disable" down-to 0
+
+      - name: Migrate up again (idempotency check)
+        run: goose -dir apps/api/migrations postgres "host=localhost port=5432 dbname=novudesk_test user=novudesk password=novudesk sslmode=disable" up
+
+  # ─── Docker build ─────────────────────────────────────────────
+  docker:
+    name: Docker build validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f infra/docker/api.Dockerfile -t novudesk-api:ci .
+
+      - name: Build web image
+        run: docker build -f infra/docker/web.Dockerfile -t novudesk-web:ci .
+        env:
+          DOCKER_BUILDKIT: 1

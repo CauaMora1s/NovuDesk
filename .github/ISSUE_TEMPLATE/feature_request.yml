@@ -1,0 +1,51 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please check the [ROADMAP](https://github.com/novudesk/novudesk/blob/main/ROADMAP.md) to see if this is already planned.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or pain point.
+      placeholder: As a support agent, I need to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe what you'd like to see implemented.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you tried any workarounds?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      options:
+        - Ticket system
+        - Comments / Notes
+        - SLA
+        - Automations
+        - Roles / Permissions
+        - Teams
+        - Email notifications
+        - API / Webhooks
+        - Frontend / UI
+        - Self-hosting / DevOps
+        - Internationalization
+        - Other
+    validations:
+      required: true
