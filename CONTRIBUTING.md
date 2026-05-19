@@ -9,8 +9,8 @@ Thank you for your interest in contributing! This document explains how to get s
 ### 1. Fork and clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/novudesk.git
-cd novudesk
+git clone https://github.com/CauaMora1s/NovuDesk.git
+cd NovuDesk
 ```
 
 ### 2. Set up the environment

@@ -28,6 +28,7 @@ type createTicketRequest struct {
 	Priority     ticket.Priority `json:"priority"      validate:"omitempty,oneof=low normal high urgent"`
 	AssigneeID   *string         `json:"assignee_id"`
 	TeamID       *string         `json:"team_id"`
+	CategoryID   *string         `json:"category_id"`
 	SLAPolicyID  *string         `json:"sla_policy_id"`
 	Tags         []string        `json:"tags"`
 	CustomFields json.RawMessage `json:"custom_fields"`
@@ -59,6 +60,7 @@ func (h *TicketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Priority:     priority,
 		AssigneeID:   req.AssigneeID,
 		TeamID:       req.TeamID,
+		CategoryID:   req.CategoryID,
 		SLAPolicyID:  req.SLAPolicyID,
 		Tags:         req.Tags,
 		CustomFields: req.CustomFields,
@@ -106,6 +108,16 @@ func (h *TicketHandler) List(w http.ResponseWriter, r *http.Request) {
 	if t := q.Get("team_id"); t != "" {
 		filter.TeamID = &t
 	}
+	if cat := q.Get("category_id"); cat != "" {
+		filter.CategoryID = &cat
+	}
+
+	// Users with no teams can only see their own tickets.
+	isAgent := claims.RoleName == "owner" || claims.RoleName == "admin" || len(claims.TeamIDs) > 0
+	if !isAgent {
+		uid := claims.UserID
+		filter.RequesterID = &uid
+	}
 
 	tickets, total, err := h.svc.List(r.Context(), claims.OrgID, filter, pg.PerPage, pg.Offset())
 	if err != nil {
@@ -120,12 +132,13 @@ func (h *TicketHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateTicketRequest struct {
-	Title        *string          `json:"title"      validate:"omitempty,min=3,max=255"`
+	Title        *string          `json:"title"       validate:"omitempty,min=3,max=255"`
 	Description  *string          `json:"description"`
-	Status       *ticket.Status   `json:"status"     validate:"omitempty,oneof=open pending on_hold resolved closed"`
-	Priority     *ticket.Priority `json:"priority"   validate:"omitempty,oneof=low normal high urgent"`
+	Status       *ticket.Status   `json:"status"      validate:"omitempty,oneof=open pending on_hold resolved closed"`
+	Priority     *ticket.Priority `json:"priority"    validate:"omitempty,oneof=low normal high urgent"`
 	AssigneeID   *string          `json:"assignee_id"`
 	TeamID       *string          `json:"team_id"`
+	CategoryID   *string          `json:"category_id"`
 	Tags         []string         `json:"tags"`
 	CustomFields json.RawMessage  `json:"custom_fields"`
 }
@@ -152,6 +165,7 @@ func (h *TicketHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Priority:     req.Priority,
 		AssigneeID:   req.AssigneeID,
 		TeamID:       req.TeamID,
+		CategoryID:   req.CategoryID,
 		Tags:         req.Tags,
 		CustomFields: req.CustomFields,
 	})

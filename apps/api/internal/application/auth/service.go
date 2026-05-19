@@ -19,6 +19,7 @@ import (
 	"github.com/novudesk/novudesk/config"
 	"github.com/novudesk/novudesk/internal/domain/organization"
 	"github.com/novudesk/novudesk/internal/domain/role"
+	"github.com/novudesk/novudesk/internal/domain/team"
 	"github.com/novudesk/novudesk/internal/domain/user"
 	apperrors "github.com/novudesk/novudesk/pkg/errors"
 )
@@ -30,12 +31,14 @@ type Claims struct {
 	OrgID       string   `json:"oid"`
 	RoleName    string   `json:"role"`
 	Permissions []string `json:"perms"`
+	TeamIDs     []string `json:"team_ids"`
 }
 
 type Service struct {
 	users    user.Repository
 	roles    role.Repository
 	orgs     organization.Repository
+	teams    team.Repository
 	cfg      config.JWTConfig
 	privKey  *rsa.PrivateKey
 	pubKey   *rsa.PublicKey
@@ -75,6 +78,12 @@ func (s *Service) WithOrgRepo(orgs organization.Repository) *Service {
 	return s
 }
 
+// WithTeamRepo attaches a team repository used to load team memberships into JWT.
+func (s *Service) WithTeamRepo(teams team.Repository) *Service {
+	s.teams = teams
+	return s
+}
+
 // Login authenticates a user and returns an access token + refresh token.
 // orgSlug is the organization's slug (URL-friendly identifier).
 func (s *Service) Login(ctx context.Context, email, password, orgSlug string) (accessToken, refreshToken string, err error) {
@@ -110,7 +119,15 @@ func (s *Service) Login(ctx context.Context, email, password, orgSlug string) (a
 		return "", "", apperrors.Internal(err)
 	}
 
-	accessToken, err = s.issueAccessToken(u.ID, orgID, member.RoleName, perms)
+	var teamIDs []string
+	if s.teams != nil {
+		teamIDs, _ = s.teams.ListTeamIDsByUser(ctx, u.ID, orgID)
+	}
+	if teamIDs == nil {
+		teamIDs = []string{}
+	}
+
+	accessToken, err = s.issueAccessToken(u.ID, orgID, member.RoleName, perms, teamIDs)
 	if err != nil {
 		return "", "", apperrors.Internal(err)
 	}
@@ -164,7 +181,7 @@ func GenerateSecureToken(bytes int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func (s *Service) issueAccessToken(userID, orgID, roleName string, perms []string) (string, error) {
+func (s *Service) issueAccessToken(userID, orgID, roleName string, perms, teamIDs []string) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -177,6 +194,7 @@ func (s *Service) issueAccessToken(userID, orgID, roleName string, perms []strin
 		OrgID:       orgID,
 		RoleName:    roleName,
 		Permissions: perms,
+		TeamIDs:     teamIDs,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

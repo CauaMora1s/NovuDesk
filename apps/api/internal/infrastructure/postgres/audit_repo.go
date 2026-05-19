@@ -27,7 +27,7 @@ func (r *auditRepo) Create(ctx context.Context, entry *audit.Log) error {
 
 func (r *auditRepo) ListByOrg(ctx context.Context, orgID string, f audit.Filter, limit, offset int) ([]*audit.Log, int64, error) {
 	q := `SELECT * FROM audit_logs WHERE org_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-	var logs []*audit.Log
+	logs := make([]*audit.Log, 0)
 	err := r.db.SelectContext(ctx, &logs, q, orgID, limit, offset)
 
 	var total int64
@@ -40,7 +40,7 @@ func (r *auditRepo) ListByResource(ctx context.Context, orgID, resourceType, res
 	q := `SELECT * FROM audit_logs
 	      WHERE org_id = $1 AND resource_type = $2 AND resource_id = $3
 	      ORDER BY created_at DESC LIMIT $4 OFFSET $5`
-	var logs []*audit.Log
+	logs := make([]*audit.Log, 0)
 	err := r.db.SelectContext(ctx, &logs, q, orgID, resourceType, resourceID, limit, offset)
 
 	var total int64

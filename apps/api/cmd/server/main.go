@@ -11,7 +11,9 @@ import (
 
 	"github.com/novudesk/novudesk/config"
 	authapp "github.com/novudesk/novudesk/internal/application/auth"
+	catapp "github.com/novudesk/novudesk/internal/application/category"
 	orgapp "github.com/novudesk/novudesk/internal/application/organization"
+	teamapp "github.com/novudesk/novudesk/internal/application/team"
 	ticketapp "github.com/novudesk/novudesk/internal/application/ticket"
 	userapp "github.com/novudesk/novudesk/internal/application/user"
 	"github.com/novudesk/novudesk/internal/infrastructure/email"
@@ -52,11 +54,14 @@ func main() {
 	log.Info("connected to redis")
 
 	// ─── Infrastructure ───────────────────────────────────────
-	orgRepo    := postgres.NewOrgRepo(db)
-	userRepo   := postgres.NewUserRepo(db)
-	roleRepo   := postgres.NewRoleRepo(db)
-	ticketRepo := postgres.NewTicketRepo(db)
-	auditRepo  := postgres.NewAuditRepo(db)
+	orgRepo      := postgres.NewOrgRepo(db)
+	userRepo     := postgres.NewUserRepo(db)
+	roleRepo     := postgres.NewRoleRepo(db)
+	teamRepo     := postgres.NewTeamRepo(db)
+	categoryRepo := postgres.NewCategoryRepo(db)
+	commentRepo  := postgres.NewCommentRepo(db)
+	ticketRepo   := postgres.NewTicketRepo(db)
+	auditRepo    := postgres.NewAuditRepo(db)
 
 	eventBus := redisinfra.NewEventBus(rdb, log)
 
@@ -90,15 +95,23 @@ func main() {
 		os.Exit(1)
 	}
 	authService.WithOrgRepo(orgRepo)
+	authService.WithTeamRepo(teamRepo)
 
 	_ = orgapp.NewService(orgRepo, userRepo, roleRepo)
-	_ = userapp.NewService(userRepo, roleRepo)
+
+	userService  := userapp.NewService(userRepo, roleRepo)
+	teamService  := teamapp.NewService(teamRepo)
+	catService   := catapp.NewService(categoryRepo)
 
 	ticketService := ticketapp.NewService(ticketRepo, nil, auditRepo, eventBus)
 
 	// ─── HTTP handlers ────────────────────────────────────────
-	authHandler   := handlers.NewAuthHandler(authService, userapp.NewService(userRepo, roleRepo))
-	ticketHandler := handlers.NewTicketHandler(ticketService)
+	authHandler     := handlers.NewAuthHandler(authService, userService)
+	ticketHandler   := handlers.NewTicketHandler(ticketService)
+	memberHandler   := handlers.NewMemberHandler(userService, teamService, roleRepo)
+	teamHandler     := handlers.NewTeamHandler(teamService, catService)
+	categoryHandler := handlers.NewCategoryHandler(catService)
+	commentHandler  := handlers.NewCommentHandler(commentRepo, auditRepo)
 
 	// ─── SSE manager ──────────────────────────────────────────
 	sseManager := sse.NewManager(eventBus, log)
@@ -107,6 +120,10 @@ func main() {
 	handler := httpserver.NewRouter(
 		authHandler,
 		ticketHandler,
+		memberHandler,
+		teamHandler,
+		categoryHandler,
+		commentHandler,
 		sseManager,
 		authService,
 		cfg.CORS.AllowedOrigins,
@@ -144,4 +161,3 @@ func main() {
 
 	log.Info("server stopped")
 }
-

@@ -96,7 +96,7 @@ func (r *userRepo) ListMembers(ctx context.Context, orgID string, limit, offset 
 	      ORDER BY om.joined_at DESC
 	      LIMIT $2 OFFSET $3`
 
-	var members []*user.Member
+	members := make([]*user.Member, 0)
 	if err := r.db.SelectContext(ctx, &members, q, orgID, limit, offset); err != nil {
 		return nil, 0, err
 	}

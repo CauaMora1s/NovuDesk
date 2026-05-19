@@ -11,7 +11,14 @@ export interface Ticket {
 	status: TicketStatus;
 	priority: TicketPriority;
 	assignee_id: string | null;
+	assignee_name: string | null;
+	assignee_avatar: string | null;
 	team_id: string | null;
+	team_name: string | null;
+	requester_id: string | null;
+	requester_name: string | null;
+	category_id: string | null;
+	category_name: string | null;
 	tags: string[];
 	sla_breached: boolean;
 	sla_response_due_at: string | null;
@@ -47,6 +54,7 @@ export interface UpdateTicketInput {
 	priority?: TicketPriority;
 	assignee_id?: string;
 	team_id?: string;
+	category_id?: string;
 	tags?: string[];
 }
 

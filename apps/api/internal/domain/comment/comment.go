@@ -6,15 +6,17 @@ import (
 )
 
 type Comment struct {
-	ID         string     `db:"id"          json:"id"`
-	TicketID   string     `db:"ticket_id"   json:"ticket_id"`
-	OrgID      string     `db:"org_id"      json:"org_id"`
-	AuthorID   *string    `db:"author_id"   json:"author_id"`
-	Body       string     `db:"body"        json:"body"`
-	IsInternal bool       `db:"is_internal" json:"is_internal"`
-	CreatedAt  time.Time  `db:"created_at"  json:"created_at"`
-	UpdatedAt  time.Time  `db:"updated_at"  json:"updated_at"`
-	DeletedAt  *time.Time `db:"deleted_at"  json:"deleted_at,omitempty"`
+	ID           string     `db:"id"            json:"id"`
+	TicketID     string     `db:"ticket_id"     json:"ticket_id"`
+	OrgID        string     `db:"org_id"        json:"org_id"`
+	AuthorID     *string    `db:"author_id"     json:"author_id"`
+	AuthorName   *string    `db:"author_name"   json:"author_name,omitempty"`
+	AuthorAvatar *string    `db:"author_avatar" json:"author_avatar,omitempty"`
+	Body         string     `db:"body"          json:"body"`
+	IsInternal   bool       `db:"is_internal"   json:"is_internal"`
+	CreatedAt    time.Time  `db:"created_at"    json:"created_at"`
+	UpdatedAt    time.Time  `db:"updated_at"    json:"updated_at"`
+	DeletedAt    *time.Time `db:"deleted_at"    json:"deleted_at,omitempty"`
 }
 
 type CreateInput struct {

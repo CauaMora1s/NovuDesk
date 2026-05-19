@@ -1,11 +1,4 @@
 <script lang="ts">
-	import { isAuthenticated } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
-
-	onMount(() => {
-		if ($isAuthenticated) goto('/dashboard');
-	});
 </script>
 
 <div class="min-h-screen bg-base-200 flex items-center justify-center p-4">
