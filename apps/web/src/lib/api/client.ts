@@ -36,7 +36,25 @@ async function request<T>(
 		headers['Authorization'] = `Bearer ${token}`;
 	}
 
-	const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 15000);
+
+	let res: Response;
+	try {
+		res = await fetch(`${API_BASE}${path}`, {
+			...options,
+			headers,
+			credentials: 'include',
+			signal: controller.signal
+		});
+	} catch (err: unknown) {
+		if (err instanceof DOMException && err.name === 'AbortError') {
+			throw new HttpError(504, { code: 'TIMEOUT', message: 'Request timed out' });
+		}
+		throw err;
+	} finally {
+		clearTimeout(timer);
+	}
 
 	if (res.status === 401) {
 		authStore.clear();

@@ -33,8 +33,13 @@ type Ticket struct {
 	Status              Status          `db:"status"               json:"status"`
 	Priority            Priority        `db:"priority"             json:"priority"`
 	AssigneeID          *string         `db:"assignee_id"          json:"assignee_id"`
+	AssigneeName        *string         `db:"assignee_name"        json:"assignee_name,omitempty"`
 	TeamID              *string         `db:"team_id"              json:"team_id"`
+	TeamName            *string         `db:"team_name"            json:"team_name,omitempty"`
 	RequesterID         *string         `db:"requester_id"         json:"requester_id"`
+	RequesterName       *string         `db:"requester_name"       json:"requester_name,omitempty"`
+	CategoryID          *string         `db:"category_id"          json:"category_id"`
+	CategoryName        *string         `db:"category_name"        json:"category_name,omitempty"`
 	SLAPolicyID         *string         `db:"sla_policy_id"        json:"sla_policy_id"`
 	SLAResponseDueAt    *time.Time      `db:"sla_response_due_at"  json:"sla_response_due_at"`
 	SLAResolutionDueAt  *time.Time      `db:"sla_resolution_due_at" json:"sla_resolution_due_at"`
@@ -54,6 +59,7 @@ type CreateInput struct {
 	Priority     Priority
 	AssigneeID   *string
 	TeamID       *string
+	CategoryID   *string
 	RequesterID  *string
 	SLAPolicyID  *string
 	Tags         []string
@@ -68,18 +74,21 @@ type UpdateInput struct {
 	Priority     *Priority
 	AssigneeID   *string
 	TeamID       *string
+	CategoryID   *string
 	SLAPolicyID  *string
 	Tags         []string
 	CustomFields json.RawMessage
 }
 
 type Filter struct {
-	Status     []Status
-	Priority   []Priority
-	AssigneeID *string
-	TeamID     *string
-	Tags       []string
-	Query      string
+	Status      []Status
+	Priority    []Priority
+	AssigneeID  *string
+	TeamID      *string
+	RequesterID *string
+	CategoryID  *string
+	Tags        []string
+	Query       string
 	SLABreached *bool
 }
 

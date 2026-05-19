@@ -54,7 +54,7 @@ func (r *roleRepo) FindSystemRole(ctx context.Context, name string) (*role.Role,
 }
 
 func (r *roleRepo) ListByOrg(ctx context.Context, orgID string) ([]*role.Role, error) {
-	var roles []*role.Role
+	roles := make([]*role.Role, 0)
 	err := r.db.SelectContext(ctx, &roles,
 		`SELECT * FROM roles WHERE org_id = $1 OR is_system_role = true ORDER BY name`, orgID)
 	return roles, err

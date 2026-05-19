@@ -15,6 +15,7 @@ interface AuthState {
 	orgSlug: string | null;
 	role: string | null;
 	permissions: Permission[];
+	teamIds: string[];
 	accessToken: string | null;
 }
 
@@ -24,6 +25,7 @@ interface SessionData {
 	orgSlug: string;
 	role: string;
 	permissions: Permission[];
+	teamIds: string[];
 	accessToken: string;
 }
 
@@ -35,6 +37,7 @@ const empty: AuthState = {
 	orgSlug: null,
 	role: null,
 	permissions: [],
+	teamIds: [],
 	accessToken: null
 };
 
@@ -61,6 +64,7 @@ function readStorage(): AuthState {
 					orgSlug: s.orgSlug,
 					role: s.role,
 					permissions: s.permissions ?? [],
+					teamIds: s.teamIds ?? [],
 					accessToken: s.accessToken
 				};
 			}
@@ -84,6 +88,7 @@ function readStorage(): AuthState {
 					orgSlug,
 					role: (payload.role as string) ?? null,
 					permissions: (payload.perms as Permission[]) ?? [],
+					teamIds: (payload.team_ids as string[]) ?? [],
 					accessToken: token
 				};
 			}

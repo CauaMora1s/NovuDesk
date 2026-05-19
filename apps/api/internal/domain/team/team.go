@@ -44,4 +44,7 @@ type Repository interface {
 	AddMember(ctx context.Context, teamID, userID string) error
 	RemoveMember(ctx context.Context, teamID, userID string) error
 	ListMembers(ctx context.Context, teamID, orgID string) ([]*Member, error)
+
+	// ListTeamIDsByUser returns all team IDs the user belongs to within an org.
+	ListTeamIDsByUser(ctx context.Context, userID, orgID string) ([]string, error)
 }

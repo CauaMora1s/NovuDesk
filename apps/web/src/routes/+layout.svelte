@@ -1,9 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { setupI18n } from '$lib/i18n';
 	import { onMount } from 'svelte';
-
-	setupI18n();
 
 	onMount(() => {
 		// Apply saved theme preference

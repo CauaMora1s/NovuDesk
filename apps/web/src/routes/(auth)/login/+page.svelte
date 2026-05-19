@@ -31,6 +31,7 @@
 				orgSlug,
 				role: payload.role,
 				permissions: payload.perms ?? [],
+				teamIds: payload.team_ids ?? [],
 				accessToken: res.access_token
 			});
 

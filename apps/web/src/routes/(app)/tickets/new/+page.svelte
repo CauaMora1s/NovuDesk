@@ -2,17 +2,42 @@
 	import { _ } from 'svelte-i18n';
 	import { goto } from '$app/navigation';
 	import { ticketsApi, type TicketPriority } from '$lib/api/tickets';
+	import { teamsApi, type Team } from '$lib/api/teams';
+	import type { Category } from '$lib/api/categories';
 
 	let title = '';
 	let description = '';
 	let priority: TicketPriority = 'normal';
+	let categoryId = '';
 	let loading = false;
 	let error = '';
 
+	// Teams with their categories for the grouped dropdown
+	type TeamWithCats = { team: Team; categories: Category[] };
+	let teamGroups: TeamWithCats[] = [];
+
+	$: loadCategories();
+
+	async function loadCategories() {
+		try {
+			const teams = await teamsApi.list();
+			const groups = await Promise.all(
+				teams.map(async (t) => ({
+					team: t,
+					categories: await teamsApi.listCategories(t.id)
+				}))
+			);
+			// Only show teams that actually have categories
+			teamGroups = groups.filter((g) => g.categories.length > 0);
+		} catch {
+			// non-critical — dropdown just stays empty
+		}
+	}
+
 	const priorities: Array<{ value: TicketPriority; label: string }> = [
-		{ value: 'low', label: 'tickets.priority.low' },
+		{ value: 'low',    label: 'tickets.priority.low' },
 		{ value: 'normal', label: 'tickets.priority.normal' },
-		{ value: 'high', label: 'tickets.priority.high' },
+		{ value: 'high',   label: 'tickets.priority.high' },
 		{ value: 'urgent', label: 'tickets.priority.urgent' }
 	];
 
@@ -21,10 +46,15 @@
 		loading = true;
 		error = '';
 		try {
-			const ticket = await ticketsApi.create({ title, description, priority });
+			const ticket = await ticketsApi.create({
+				title,
+				description,
+				priority,
+				category_id: categoryId || undefined
+			});
 			goto(`/tickets/${ticket.id}`);
-		} catch (e: unknown) {
-			error = 'Não foi possível criar o ticket.';
+		} catch {
+			error = $_('tickets.createError');
 		} finally {
 			loading = false;
 		}
@@ -81,7 +111,7 @@
 
 				<div class="form-control">
 					<label class="label pb-1" for="priority">
-						<span class="label-text font-medium">{$_('tickets.priority')}</span>
+						<span class="label-text font-medium">{$_('tickets.priorityLabel')}</span>
 					</label>
 					<select id="priority" bind:value={priority} class="select select-bordered w-full">
 						{#each priorities as p}
@@ -89,6 +119,24 @@
 						{/each}
 					</select>
 				</div>
+
+				{#if teamGroups.length > 0}
+					<div class="form-control">
+						<label class="label pb-1" for="category">
+							<span class="label-text font-medium">{$_('tickets.categoryOptionalLabel')} <span class="text-base-content/40 font-normal">{$_('common.optional')}</span></span>
+						</label>
+						<select id="category" bind:value={categoryId} class="select select-bordered w-full">
+							<option value="">{$_('tickets.noCategoryOption')}</option>
+							{#each teamGroups as g}
+								<optgroup label={g.team.name}>
+									{#each g.categories as cat}
+										<option value={cat.id}>{cat.name}</option>
+									{/each}
+								</optgroup>
+							{/each}
+						</select>
+					</div>
+				{/if}
 
 				<div class="flex items-center gap-3 pt-2">
 					<button type="submit" class="btn btn-primary" disabled={loading || !title.trim()}>

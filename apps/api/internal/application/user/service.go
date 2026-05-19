@@ -84,6 +84,43 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, orgID, roleID string
 	return nil
 }
 
+// ListMembers returns paginated organization members.
+func (s *Service) ListMembers(ctx context.Context, orgID string, limit, offset int) ([]*user.Member, int64, error) {
+	members, total, err := s.users.ListMembers(ctx, orgID, limit, offset)
+	if err != nil {
+		return nil, 0, apperrors.Internal(err)
+	}
+	return members, total, nil
+}
+
+// GetMember returns a single org member.
+func (s *Service) GetMember(ctx context.Context, userID, orgID string) (*user.Member, error) {
+	m, err := s.users.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	if m == nil {
+		return nil, apperrors.NotFound(apperrors.CodeUserNotFound, "member not found")
+	}
+	return m, nil
+}
+
+// UpdateMemberRole changes a member's role within an org.
+func (s *Service) UpdateMemberRole(ctx context.Context, userID, orgID, roleID string) error {
+	if err := s.users.UpdateMemberRole(ctx, userID, orgID, roleID); err != nil {
+		return apperrors.Internal(err)
+	}
+	return nil
+}
+
+// Deactivate disables a member's access to an org.
+func (s *Service) Deactivate(ctx context.Context, userID, orgID string) error {
+	if err := s.users.DeactivateMember(ctx, userID, orgID); err != nil {
+		return apperrors.Internal(err)
+	}
+	return nil
+}
+
 // InviteInput holds the data needed to create an invitation.
 type InviteInput struct {
 	OrgID     string
