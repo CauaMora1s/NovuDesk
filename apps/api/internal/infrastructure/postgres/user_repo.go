@@ -120,3 +120,86 @@ func (r *userRepo) DeactivateMember(ctx context.Context, userID, orgID string) e
 		userID, orgID)
 	return err
 }
+
+func (r *userRepo) ReactivateMember(ctx context.Context, userID, orgID string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE organization_members SET is_active = TRUE WHERE user_id = $1 AND org_id = $2`,
+		userID, orgID)
+	return err
+}
+
+func (r *userRepo) GetMemberID(ctx context.Context, userID, orgID string) (string, error) {
+	var id string
+	err := r.db.GetContext(ctx, &id,
+		`SELECT id FROM organization_members WHERE user_id = $1 AND org_id = $2`,
+		userID, orgID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
+func (r *userRepo) UpdateMemberProfile(ctx context.Context, userID, orgID, fullName, email string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET full_name = $2, email = $3, updated_at = NOW()
+		 WHERE id = $1 AND EXISTS (
+		     SELECT 1 FROM organization_members WHERE user_id = $1 AND org_id = $4
+		 )`,
+		userID, fullName, email, orgID)
+	return err
+}
+
+func (r *userRepo) UpdateMemberPassword(ctx context.Context, userID, newPasswordHash string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+		userID, newPasswordHash)
+	return err
+}
+
+func (r *userRepo) GetMemberPermissionOverrides(ctx context.Context, memberID string) ([]user.PermissionOverride, error) {
+	type row struct {
+		Key       string `db:"key"`
+		IsGranted bool   `db:"is_granted"`
+	}
+	var rows []row
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT p.key, o.is_granted
+		FROM member_permission_overrides o
+		JOIN permissions p ON p.id = o.permission_id
+		WHERE o.member_id = $1
+		ORDER BY p.key`, memberID)
+	if err != nil {
+		return nil, err
+	}
+	overrides := make([]user.PermissionOverride, len(rows))
+	for i, row := range rows {
+		overrides[i] = user.PermissionOverride{PermissionKey: row.Key, IsGranted: row.IsGranted}
+	}
+	return overrides, nil
+}
+
+func (r *userRepo) SetMemberPermissionOverrides(ctx context.Context, memberID string, overrides []user.PermissionOverride) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM member_permission_overrides WHERE member_id = $1`, memberID); err != nil {
+		return err
+	}
+
+	for _, o := range overrides {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO member_permission_overrides (member_id, permission_id, is_granted)
+			SELECT $1, id, $3 FROM permissions WHERE key = $2
+			ON CONFLICT (member_id, permission_id) DO UPDATE SET is_granted = $3`,
+			memberID, o.PermissionKey, o.IsGranted)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

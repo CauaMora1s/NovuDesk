@@ -121,6 +121,117 @@ func (s *Service) Deactivate(ctx context.Context, userID, orgID string) error {
 	return nil
 }
 
+// Reactivate re-enables a member's access to an org.
+func (s *Service) Reactivate(ctx context.Context, userID, orgID string) error {
+	if err := s.users.ReactivateMember(ctx, userID, orgID); err != nil {
+		return apperrors.Internal(err)
+	}
+	return nil
+}
+
+// UpdateProfile updates a member's full name and email.
+func (s *Service) UpdateProfile(ctx context.Context, userID, orgID, fullName, email string) error {
+	// Verify the member belongs to the org.
+	m, err := s.users.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+	if m == nil {
+		return apperrors.NotFound(apperrors.CodeUserNotFound, "member not found")
+	}
+
+	// Ensure the new email is not already taken by another user.
+	if m.Email != email {
+		exists, err := s.users.EmailExists(ctx, email)
+		if err != nil {
+			return apperrors.Internal(err)
+		}
+		if exists {
+			return apperrors.Conflict(apperrors.CodeEmailTaken, "email address is already registered")
+		}
+	}
+
+	if err := s.users.UpdateMemberProfile(ctx, userID, orgID, fullName, email); err != nil {
+		return apperrors.Internal(err)
+	}
+	return nil
+}
+
+// UpdatePassword sets a new password for a member.
+func (s *Service) UpdatePassword(ctx context.Context, userID, orgID, newPassword string) error {
+	m, err := s.users.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+	if m == nil {
+		return apperrors.NotFound(apperrors.CodeUserNotFound, "member not found")
+	}
+
+	hash, err := authsvc.HashPassword(newPassword)
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+
+	if err := s.users.UpdateMemberPassword(ctx, userID, hash); err != nil {
+		return apperrors.Internal(err)
+	}
+	return nil
+}
+
+// GetEffectivePermissions returns the role permissions combined with per-member overrides.
+func (s *Service) GetEffectivePermissions(ctx context.Context, userID, orgID string) (*user.EffectivePermissions, error) {
+	m, err := s.users.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+	if m == nil {
+		return nil, apperrors.NotFound(apperrors.CodeUserNotFound, "member not found")
+	}
+
+	rolePerms, err := s.roles.GetPermissionKeys(ctx, m.RoleID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+
+	memberID, err := s.users.GetMemberID(ctx, userID, orgID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+
+	overrides, err := s.users.GetMemberPermissionOverrides(ctx, memberID)
+	if err != nil {
+		return nil, apperrors.Internal(err)
+	}
+
+	effective := ApplyOverrides(rolePerms, overrides)
+	return &user.EffectivePermissions{
+		RolePermissions: rolePerms,
+		Overrides:       overrides,
+		Effective:       effective,
+	}, nil
+}
+
+// SetPermissionOverrides replaces all per-member permission overrides.
+func (s *Service) SetPermissionOverrides(ctx context.Context, userID, orgID string, overrides []user.PermissionOverride) error {
+	m, err := s.users.GetMember(ctx, userID, orgID)
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+	if m == nil {
+		return apperrors.NotFound(apperrors.CodeUserNotFound, "member not found")
+	}
+
+	memberID, err := s.users.GetMemberID(ctx, userID, orgID)
+	if err != nil {
+		return apperrors.Internal(err)
+	}
+
+	if err := s.users.SetMemberPermissionOverrides(ctx, memberID, overrides); err != nil {
+		return apperrors.Internal(err)
+	}
+	return nil
+}
+
 // InviteInput holds the data needed to create an invitation.
 type InviteInput struct {
 	OrgID     string

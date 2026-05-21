@@ -28,6 +28,12 @@ const (
 	RoleViewer = "viewer"
 )
 
+// RoleWithPermissions bundles a role with its assigned permissions.
+type RoleWithPermissions struct {
+	Role
+	Permissions []*Permission `json:"permissions"`
+}
+
 type CreateInput struct {
 	OrgID       string
 	Name        string
@@ -40,6 +46,7 @@ type Repository interface {
 	FindByName(ctx context.Context, orgID, name string) (*Role, error)
 	FindSystemRole(ctx context.Context, name string) (*Role, error)
 	ListByOrg(ctx context.Context, orgID string) ([]*Role, error)
+	Update(ctx context.Context, role *Role) error
 	Delete(ctx context.Context, id, orgID string) error
 
 	// Permission assignment
