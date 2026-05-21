@@ -37,9 +37,11 @@ func (r *auditRepo) ListByOrg(ctx context.Context, orgID string, f audit.Filter,
 }
 
 func (r *auditRepo) ListByResource(ctx context.Context, orgID, resourceType, resourceID string, limit, offset int) ([]*audit.Log, int64, error) {
-	q := `SELECT * FROM audit_logs
-	      WHERE org_id = $1 AND resource_type = $2 AND resource_id = $3
-	      ORDER BY created_at DESC LIMIT $4 OFFSET $5`
+	q := `SELECT l.*, u.full_name AS actor_name
+	      FROM audit_logs l
+	      LEFT JOIN users u ON u.id = l.actor_id
+	      WHERE l.org_id = $1 AND l.resource_type = $2 AND l.resource_id = $3
+	      ORDER BY l.created_at DESC LIMIT $4 OFFSET $5`
 	logs := make([]*audit.Log, 0)
 	err := r.db.SelectContext(ctx, &logs, q, orgID, resourceType, resourceID, limit, offset)
 

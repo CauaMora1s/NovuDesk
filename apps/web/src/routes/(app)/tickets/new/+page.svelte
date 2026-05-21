@@ -4,6 +4,7 @@
 	import { ticketsApi, type TicketPriority } from '$lib/api/tickets';
 	import { teamsApi, type Team } from '$lib/api/teams';
 	import type { Category } from '$lib/api/categories';
+	import FileUpload from '$lib/components/FileUpload.svelte';
 
 	let title = '';
 	let description = '';
@@ -11,6 +12,8 @@
 	let categoryId = '';
 	let loading = false;
 	let error = '';
+
+	let fileUploadRef: FileUpload;
 
 	// Teams with their categories for the grouped dropdown
 	type TeamWithCats = { team: Team; categories: Category[] };
@@ -52,6 +55,11 @@
 				priority,
 				category_id: categoryId || undefined
 			});
+
+			if (fileUploadRef) {
+				await fileUploadRef.uploadAll(ticket.id);
+			}
+
 			goto(`/tickets/${ticket.id}`);
 		} catch {
 			error = $_('tickets.createError');
@@ -123,9 +131,9 @@
 				{#if teamGroups.length > 0}
 					<div class="form-control">
 						<label class="label pb-1" for="category">
-							<span class="label-text font-medium">{$_('tickets.categoryOptionalLabel')} <span class="text-base-content/40 font-normal">{$_('common.optional')}</span></span>
+							<span class="label-text font-medium">{$_('tickets.categoryLabel')} *</span>
 						</label>
-						<select id="category" bind:value={categoryId} class="select select-bordered w-full">
+						<select id="category" bind:value={categoryId} class="select select-bordered w-full" required>
 							<option value="">{$_('tickets.noCategoryOption')}</option>
 							{#each teamGroups as g}
 								<optgroup label={g.team.name}>
@@ -138,8 +146,19 @@
 					</div>
 				{/if}
 
+				<div class="form-control">
+					<label class="label pb-1">
+						<span class="label-text font-medium">
+							{$_('tickets.attachments.title')}
+							<span class="text-base-content/40 font-normal">{$_('common.optional')}</span>
+						</span>
+					</label>
+					<!-- ticketId is empty at creation time; uploadAll() is called after ticket creation -->
+					<FileUpload bind:this={fileUploadRef} ticketId="" />
+				</div>
+
 				<div class="flex items-center gap-3 pt-2">
-					<button type="submit" class="btn btn-primary" disabled={loading || !title.trim()}>
+					<button type="submit" class="btn btn-primary" disabled={loading || !title.trim() || (teamGroups.length > 0 && !categoryId)}>
 						{#if loading}
 							<span class="loading loading-spinner loading-sm"></span>
 						{/if}

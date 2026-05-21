@@ -8,6 +8,12 @@
 
 	$: currentPath = $page.url.pathname;
 
+	$: canViewTeams = can('teams:view') && (
+		$authStore.role === 'owner' ||
+		$authStore.role === 'admin' ||
+		($authStore.teamIds?.length ?? 0) > 0
+	);
+
 	function isActive(path: string) {
 		return currentPath.startsWith(path);
 	}
@@ -65,7 +71,7 @@
 	<!-- Navigation -->
 	<nav class="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
 		{#each navItems as item}
-			{#if item.permission === null || can(item.permission)}
+			{#if item.permission === null || (item.href === '/teams' ? canViewTeams : can(item.permission))}
 				<a
 					href={item.href}
 					class="sidebar-link"

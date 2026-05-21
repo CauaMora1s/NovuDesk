@@ -33,6 +33,7 @@ type UpdateInput struct {
 
 type Repository interface {
 	Create(ctx context.Context, c *Comment) error
+	CreateWithAuthor(ctx context.Context, c *Comment) (*Comment, error)
 	FindByID(ctx context.Context, id, orgID string) (*Comment, error)
 	ListByTicket(ctx context.Context, ticketID, orgID string, includeInternal bool) ([]*Comment, error)
 	Update(ctx context.Context, id, orgID string, input UpdateInput) (*Comment, error)

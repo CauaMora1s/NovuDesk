@@ -1,25 +1,42 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	authsvc "github.com/novudesk/novudesk/internal/application/auth"
 	ticketsvc "github.com/novudesk/novudesk/internal/application/ticket"
+	teamdomain "github.com/novudesk/novudesk/internal/domain/team"
 	"github.com/novudesk/novudesk/internal/domain/ticket"
 	"github.com/novudesk/novudesk/internal/interfaces/http/middleware"
 	"github.com/novudesk/novudesk/internal/interfaces/http/respond"
+	apperrors "github.com/novudesk/novudesk/pkg/errors"
 	"github.com/novudesk/novudesk/pkg/pagination"
 	"github.com/novudesk/novudesk/pkg/validator"
 )
 
 type TicketHandler struct {
-	svc *ticketsvc.Service
+	svc       *ticketsvc.Service
+	teamsRepo teamdomain.Repository
 }
 
-func NewTicketHandler(svc *ticketsvc.Service) *TicketHandler {
-	return &TicketHandler{svc: svc}
+func NewTicketHandler(svc *ticketsvc.Service, teamsRepo teamdomain.Repository) *TicketHandler {
+	return &TicketHandler{svc: svc, teamsRepo: teamsRepo}
+}
+
+// isPrivileged performs a real-time DB check to avoid stale JWT team_ids.
+func (h *TicketHandler) isPrivileged(ctx context.Context, claims *authsvc.Claims) bool {
+	if claims.RoleName == "owner" || claims.RoleName == "admin" {
+		return true
+	}
+	teamIDs, err := h.teamsRepo.ListTeamIDsByUser(ctx, claims.UserID, claims.OrgID)
+	if err != nil {
+		return false
+	}
+	return len(teamIDs) > 0
 }
 
 type createTicketRequest struct {
@@ -84,6 +101,15 @@ func (h *TicketHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Non-privileged users (no team, not admin/owner) may only view their own tickets.
+	isPrivileged := h.isPrivileged(r.Context(), claims)
+	if !isPrivileged {
+		if t.RequesterID == nil || *t.RequesterID != claims.UserID {
+			respond.Error(w, apperrors.NotFound(apperrors.CodeTicketNotFound, "ticket not found"))
+			return
+		}
+	}
+
 	respond.Ok(w, t)
 }
 
@@ -113,7 +139,7 @@ func (h *TicketHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Users with no teams can only see their own tickets.
-	isAgent := claims.RoleName == "owner" || claims.RoleName == "admin" || len(claims.TeamIDs) > 0
+	isAgent := h.isPrivileged(r.Context(), claims)
 	if !isAgent {
 		uid := claims.UserID
 		filter.RequesterID = &uid
@@ -156,6 +182,20 @@ func (h *TicketHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if errs := validator.Validate(req); errs != nil {
 		respond.ValidationError(w, errs)
 		return
+	}
+
+	// Non-privileged users may only update their own tickets and cannot change status or assignee.
+	isPrivileged := h.isPrivileged(r.Context(), claims)
+	if !isPrivileged {
+		if req.Status != nil || req.AssigneeID != nil {
+			respond.Forbidden(w, "only team members can change status or assignee")
+			return
+		}
+		existing, err := h.svc.Get(r.Context(), id, claims.OrgID)
+		if err != nil || existing == nil || existing.RequesterID == nil || *existing.RequesterID != claims.UserID {
+			respond.Forbidden(w, "insufficient permissions")
+			return
+		}
 	}
 
 	t, err := h.svc.Update(r.Context(), id, claims.OrgID, claims.UserID, ticket.UpdateInput{

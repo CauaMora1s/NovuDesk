@@ -18,6 +18,7 @@ export interface TimelineItem {
 	action?: string;
 	actor_id?: string;
 	actor_type?: string;
+	actor_name?: string;
 	before?: Record<string, unknown>;
 	after?: Record<string, unknown>;
 }

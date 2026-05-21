@@ -121,9 +121,15 @@
     "activity": {
       "created": "criou o ticket",
       "statusChanged": "alterou o status",
+      "statusChangedTo": "alterou o status para",
       "assigned": "foi atribuído",
+      "assignedTo": "atribuiu para",
+      "unassignedTicket": "removeu o responsável",
       "categoryChanged": "alterou a categoria",
+      "categoryChangedTo": "alterou a categoria para",
+      "categoryRemoved": "removeu a categoria",
       "priorityChanged": "alterou a prioridade",
+      "priorityChangedTo": "alterou a prioridade para",
       "updated": "atualizou o ticket"
     },
     "timeAgo": {
@@ -135,7 +141,25 @@
     "openDuration": {
       "hours": "{count}h",
       "days": "{count}d"
+    },
+    "attachments": {
+      "title": "Anexos",
+      "add": "Anexar arquivo",
+      "maxSize": "Máx. 25 MB",
+      "allowed": "Imagens, PDF, TXT, CSV, ZIP, DOCX, XLSX",
+      "uploading": "Enviando...",
+      "uploaded": "Arquivo enviado",
+      "error": "Erro ao enviar arquivo",
+      "remove": "Remover",
+      "download": "Baixar"
     }
+  },
+  "polling": {
+    "label": "Atualizar a cada",
+    "10s": "10s",
+    "30s": "30s",
+    "1min": "1 min",
+    "off": "Desativado"
   },
   "teams": {
     "title": "Times",

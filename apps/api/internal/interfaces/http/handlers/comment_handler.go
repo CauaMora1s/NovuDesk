@@ -48,11 +48,12 @@ type TimelineItem struct {
 	AuthorAvatar *string `json:"author_avatar,omitempty"`
 
 	// Activity fields (populated when Type == "activity")
-	Action   *string          `json:"action,omitempty"`
-	ActorID  *string          `json:"actor_id,omitempty"`
+	Action    *string          `json:"action,omitempty"`
+	ActorID   *string          `json:"actor_id,omitempty"`
 	ActorType *audit.ActorType `json:"actor_type,omitempty"`
-	Before   *json.RawMessage `json:"before,omitempty"`
-	After    *json.RawMessage `json:"after,omitempty"`
+	ActorName *string          `json:"actor_name,omitempty"`
+	Before    *json.RawMessage `json:"before,omitempty"`
+	After     *json.RawMessage `json:"after,omitempty"`
 }
 
 // List returns the unified timeline (comments + audit events) for a ticket.
@@ -118,6 +119,7 @@ func (h *CommentHandler) List(w http.ResponseWriter, r *http.Request) {
 			Action:    &action,
 			ActorID:   l.ActorID,
 			ActorType: &actorType,
+			ActorName: l.ActorName,
 			Before:    before,
 			After:     after,
 		}
@@ -175,10 +177,23 @@ func (h *CommentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		IsInternal: req.IsInternal,
 	}
 
-	if err := h.comments.Create(r.Context(), c); err != nil {
+	created, err := h.comments.CreateWithAuthor(r.Context(), c)
+	if err != nil {
 		respond.Error(w, apperrors.Internal(err))
 		return
 	}
 
-	respond.Created(w, c)
+	isInternal := created.IsInternal
+	item := TimelineItem{
+		Type:         TimelineComment,
+		ID:           created.ID,
+		CreatedAt:    created.CreatedAt,
+		Body:         &created.Body,
+		IsInternal:   &isInternal,
+		AuthorID:     created.AuthorID,
+		AuthorName:   created.AuthorName,
+		AuthorAvatar: created.AuthorAvatar,
+	}
+
+	respond.Created(w, item)
 }

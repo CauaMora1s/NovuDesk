@@ -11,6 +11,7 @@ import (
 	"github.com/novudesk/novudesk/internal/domain/team"
 	"github.com/novudesk/novudesk/internal/interfaces/http/middleware"
 	"github.com/novudesk/novudesk/internal/interfaces/http/respond"
+	apperrors "github.com/novudesk/novudesk/pkg/errors"
 	"github.com/novudesk/novudesk/pkg/validator"
 )
 
@@ -30,7 +31,24 @@ func (h *TeamHandler) List(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, err)
 		return
 	}
-	respond.Ok(w, teams)
+
+	if claims.RoleName == "owner" || claims.RoleName == "admin" {
+		respond.Ok(w, teams)
+		return
+	}
+
+	// Non-admin: only return teams the user belongs to (per JWT claims).
+	memberOf := make(map[string]bool, len(claims.TeamIDs))
+	for _, id := range claims.TeamIDs {
+		memberOf[id] = true
+	}
+	filtered := teams[:0]
+	for _, t := range teams {
+		if memberOf[t.ID] {
+			filtered = append(filtered, t)
+		}
+	}
+	respond.Ok(w, filtered)
 }
 
 type createTeamRequest struct {
@@ -63,6 +81,21 @@ func (h *TeamHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *TeamHandler) Get(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	id := chi.URLParam(r, "id")
+
+	// Non-admin/owner may only access teams they belong to.
+	if claims.RoleName != "owner" && claims.RoleName != "admin" {
+		isMember := false
+		for _, tid := range claims.TeamIDs {
+			if tid == id {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			respond.Error(w, apperrors.NotFound(apperrors.Code("TEAM_NOT_FOUND"), "team not found"))
+			return
+		}
+	}
 
 	t, err := h.teams.Get(r.Context(), id, claims.OrgID)
 	if err != nil {
@@ -158,6 +191,21 @@ func (h *TeamHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 func (h *TeamHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	id := chi.URLParam(r, "id")
+
+	// Non-admin/owner may only list members of teams they belong to.
+	if claims.RoleName != "owner" && claims.RoleName != "admin" {
+		isMember := false
+		for _, tid := range claims.TeamIDs {
+			if tid == id {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			respond.Forbidden(w, "access denied")
+			return
+		}
+	}
 
 	members, err := h.teams.ListMembers(r.Context(), id, claims.OrgID)
 	if err != nil {

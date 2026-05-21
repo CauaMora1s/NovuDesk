@@ -37,6 +37,11 @@ func (s *Service) Create(ctx context.Context, input ticket.CreateInput) (*ticket
 		return nil, apperrors.Internal(err)
 	}
 
+	requesterID := input.RequesterID
+	if requesterID == nil && input.CreatedBy != "" {
+		requesterID = &input.CreatedBy
+	}
+
 	t := &ticket.Ticket{
 		ID:           uuid.NewString(),
 		OrgID:        input.OrgID,
@@ -47,7 +52,8 @@ func (s *Service) Create(ctx context.Context, input ticket.CreateInput) (*ticket
 		Priority:     input.Priority,
 		AssigneeID:   input.AssigneeID,
 		TeamID:       input.TeamID,
-		RequesterID:  input.RequesterID,
+		CategoryID:   input.CategoryID,
+		RequesterID:  requesterID,
 		SLAPolicyID:  input.SLAPolicyID,
 		Tags:         input.Tags,
 		CustomFields: input.CustomFields,

@@ -19,6 +19,7 @@ import (
 	"github.com/novudesk/novudesk/internal/infrastructure/email"
 	"github.com/novudesk/novudesk/internal/infrastructure/postgres"
 	redisinfra "github.com/novudesk/novudesk/internal/infrastructure/redis"
+	domainstorage "github.com/novudesk/novudesk/internal/domain/storage"
 	"github.com/novudesk/novudesk/internal/infrastructure/storage"
 	"github.com/novudesk/novudesk/internal/interfaces/http/handlers"
 	httpserver "github.com/novudesk/novudesk/internal/interfaces/http"
@@ -54,18 +55,19 @@ func main() {
 	log.Info("connected to redis")
 
 	// ─── Infrastructure ───────────────────────────────────────
-	orgRepo      := postgres.NewOrgRepo(db)
-	userRepo     := postgres.NewUserRepo(db)
-	roleRepo     := postgres.NewRoleRepo(db)
-	teamRepo     := postgres.NewTeamRepo(db)
-	categoryRepo := postgres.NewCategoryRepo(db)
-	commentRepo  := postgres.NewCommentRepo(db)
-	ticketRepo   := postgres.NewTicketRepo(db)
-	auditRepo    := postgres.NewAuditRepo(db)
+	orgRepo        := postgres.NewOrgRepo(db)
+	userRepo       := postgres.NewUserRepo(db)
+	roleRepo       := postgres.NewRoleRepo(db)
+	teamRepo       := postgres.NewTeamRepo(db)
+	categoryRepo   := postgres.NewCategoryRepo(db)
+	commentRepo    := postgres.NewCommentRepo(db)
+	ticketRepo     := postgres.NewTicketRepo(db)
+	auditRepo      := postgres.NewAuditRepo(db)
+	attachmentRepo := postgres.NewAttachmentRepo(db)
 
 	eventBus := redisinfra.NewEventBus(rdb, log)
 
-	var storageProvider interface{ PublicURL(string) string }
+	var storageProvider domainstorage.Provider
 	if cfg.Storage.Driver == "s3" {
 		storageProvider, err = storage.NewS3Provider(cfg.Storage.S3)
 		if err != nil {
@@ -79,7 +81,6 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	_ = storageProvider
 
 	smtpSender, err := email.NewSMTPSender(cfg.SMTP)
 	if err != nil {
@@ -106,32 +107,42 @@ func main() {
 	ticketService := ticketapp.NewService(ticketRepo, nil, auditRepo, eventBus)
 
 	// ─── HTTP handlers ────────────────────────────────────────
-	authHandler     := handlers.NewAuthHandler(authService, userService)
-	ticketHandler   := handlers.NewTicketHandler(ticketService)
-	memberHandler   := handlers.NewMemberHandler(userService, teamService, roleRepo)
-	teamHandler     := handlers.NewTeamHandler(teamService, catService)
-	categoryHandler := handlers.NewCategoryHandler(catService)
-	commentHandler  := handlers.NewCommentHandler(commentRepo, auditRepo)
+	authHandler       := handlers.NewAuthHandler(authService, userService)
+	ticketHandler     := handlers.NewTicketHandler(ticketService, teamRepo)
+	memberHandler     := handlers.NewMemberHandler(userService, teamService, roleRepo)
+	teamHandler       := handlers.NewTeamHandler(teamService, catService)
+	categoryHandler   := handlers.NewCategoryHandler(catService)
+	commentHandler    := handlers.NewCommentHandler(commentRepo, auditRepo)
+	attachmentHandler := handlers.NewAttachmentHandler(attachmentRepo, storageProvider)
 
 	// ─── SSE manager ──────────────────────────────────────────
 	sseManager := sse.NewManager(eventBus, log)
 
 	// ─── HTTP server ──────────────────────────────────────────
-	handler := httpserver.NewRouter(
+	apiHandler := httpserver.NewRouter(
 		authHandler,
 		ticketHandler,
 		memberHandler,
 		teamHandler,
 		categoryHandler,
 		commentHandler,
+		attachmentHandler,
 		sseManager,
 		authService,
 		cfg.CORS.AllowedOrigins,
 	)
 
+	// In local storage mode the provider generates URLs like /files/<key>.
+	// We mount a plain FileServer at that prefix so downloads work without S3.
+	mux := http.NewServeMux()
+	if cfg.Storage.Driver != "s3" {
+		mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(cfg.Storage.LocalPath))))
+	}
+	mux.Handle("/", apiHandler)
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.App.Port),
-		Handler:      handler,
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
