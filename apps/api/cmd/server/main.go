@@ -13,6 +13,7 @@ import (
 	authapp "github.com/novudesk/novudesk/internal/application/auth"
 	catapp "github.com/novudesk/novudesk/internal/application/category"
 	orgapp "github.com/novudesk/novudesk/internal/application/organization"
+	roleapp "github.com/novudesk/novudesk/internal/application/role"
 	teamapp "github.com/novudesk/novudesk/internal/application/team"
 	ticketapp "github.com/novudesk/novudesk/internal/application/ticket"
 	userapp "github.com/novudesk/novudesk/internal/application/user"
@@ -101,6 +102,7 @@ func main() {
 	_ = orgapp.NewService(orgRepo, userRepo, roleRepo)
 
 	userService  := userapp.NewService(userRepo, roleRepo)
+	roleService  := roleapp.NewService(roleRepo)
 	teamService  := teamapp.NewService(teamRepo)
 	catService   := catapp.NewService(categoryRepo)
 
@@ -110,6 +112,7 @@ func main() {
 	authHandler       := handlers.NewAuthHandler(authService, userService)
 	ticketHandler     := handlers.NewTicketHandler(ticketService, teamRepo)
 	memberHandler     := handlers.NewMemberHandler(userService, teamService, roleRepo)
+	roleHandler       := handlers.NewRoleHandler(roleService)
 	teamHandler       := handlers.NewTeamHandler(teamService, catService)
 	categoryHandler   := handlers.NewCategoryHandler(catService)
 	commentHandler    := handlers.NewCommentHandler(commentRepo, auditRepo)
@@ -123,6 +126,7 @@ func main() {
 		authHandler,
 		ticketHandler,
 		memberHandler,
+		roleHandler,
 		teamHandler,
 		categoryHandler,
 		commentHandler,

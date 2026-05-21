@@ -17,6 +17,7 @@ type Router struct {
 	auth        *handlers.AuthHandler
 	tickets     *handlers.TicketHandler
 	members     *handlers.MemberHandler
+	roles       *handlers.RoleHandler
 	teams       *handlers.TeamHandler
 	categories  *handlers.CategoryHandler
 	comments    *handlers.CommentHandler
@@ -30,6 +31,7 @@ func NewRouter(
 	auth *handlers.AuthHandler,
 	tickets *handlers.TicketHandler,
 	members *handlers.MemberHandler,
+	roles *handlers.RoleHandler,
 	teams *handlers.TeamHandler,
 	categories *handlers.CategoryHandler,
 	comments *handlers.CommentHandler,
@@ -98,7 +100,24 @@ func NewRouter(
 				r.With(middleware.RequirePermission("users:invite")).Post("/", members.Create)
 				r.With(middleware.RequirePermission("users:manage_roles")).Patch("/{id}", members.UpdateRole)
 				r.With(middleware.RequirePermission("users:deactivate")).Delete("/{id}", members.Deactivate)
+				r.With(middleware.RequirePermission("users:deactivate")).Post("/{id}/activate", members.Activate)
+				r.With(middleware.RequirePermission("users:manage_roles")).Patch("/{id}/profile", members.UpdateProfile)
+				r.With(middleware.RequirePermission("users:manage_roles")).Patch("/{id}/password", members.UpdatePassword)
+				r.With(middleware.RequirePermission("users:view")).Get("/{id}/permissions", members.GetPermissions)
+				r.With(middleware.RequirePermission("users:manage_roles")).Put("/{id}/permissions", members.SetPermissions)
 			})
+
+			// Roles
+			r.Route("/roles", func(r chi.Router) {
+				r.With(middleware.RequirePermission("users:view")).Get("/", roles.List)
+				r.With(middleware.RequirePermission("organization:manage_settings")).Post("/", roles.Create)
+				r.With(middleware.RequirePermission("users:view")).Get("/{id}", roles.Get)
+				r.With(middleware.RequirePermission("organization:manage_settings")).Patch("/{id}", roles.Update)
+				r.With(middleware.RequirePermission("organization:manage_settings")).Delete("/{id}", roles.Delete)
+			})
+
+			// Permissions — list all available system permissions for role/member editing forms
+			r.With(middleware.RequirePermission("organization:view_settings")).Get("/permissions", roles.ListPermissions)
 
 			// Teams
 			r.Route("/teams", func(r chi.Router) {
@@ -125,8 +144,6 @@ func NewRouter(
 				r.With(middleware.RequirePermission("teams:manage")).Delete("/{id}", categories.Delete)
 			})
 
-			// Roles (list only — for populating selects in member creation forms)
-			r.With(middleware.RequirePermission("users:view")).Get("/roles", members.ListRoles)
 		})
 	})
 

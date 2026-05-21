@@ -24,6 +24,26 @@ import (
 	apperrors "github.com/novudesk/novudesk/pkg/errors"
 )
 
+// applyOverrides merges role permission keys with per-member overrides.
+func applyOverrides(roleKeys []string, overrides []user.PermissionOverride) []string {
+	set := make(map[string]struct{}, len(roleKeys))
+	for _, k := range roleKeys {
+		set[k] = struct{}{}
+	}
+	for _, o := range overrides {
+		if o.IsGranted {
+			set[o.PermissionKey] = struct{}{}
+		} else {
+			delete(set, o.PermissionKey)
+		}
+	}
+	result := make([]string, 0, len(set))
+	for k := range set {
+		result = append(result, k)
+	}
+	return result
+}
+
 // Claims are embedded in the JWT access token.
 type Claims struct {
 	jwt.RegisteredClaims
@@ -117,6 +137,15 @@ func (s *Service) Login(ctx context.Context, email, password, orgSlug string) (a
 	perms, err := s.roles.GetPermissionKeys(ctx, member.RoleID)
 	if err != nil {
 		return "", "", apperrors.Internal(err)
+	}
+
+	// Apply per-member permission overrides on top of role permissions.
+	memberID, err := s.users.GetMemberID(ctx, u.ID, orgID)
+	if err == nil && memberID != "" {
+		overrides, oErr := s.users.GetMemberPermissionOverrides(ctx, memberID)
+		if oErr == nil && len(overrides) > 0 {
+			perms = applyOverrides(perms, overrides)
+		}
 	}
 
 	var teamIDs []string

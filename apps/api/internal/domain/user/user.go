@@ -40,6 +40,19 @@ type Member struct {
 	JoinedAt  time.Time `db:"joined_at"        json:"joined_at"`
 }
 
+// PermissionOverride represents a per-member permission grant or denial.
+type PermissionOverride struct {
+	PermissionKey string `db:"permission_key" json:"permission_key"`
+	IsGranted     bool   `db:"is_granted"     json:"is_granted"`
+}
+
+// EffectivePermissions holds the role-based keys with overrides already applied.
+type EffectivePermissions struct {
+	RolePermissions []string             `json:"role_permissions"`
+	Overrides       []PermissionOverride `json:"overrides"`
+	Effective       []string             `json:"effective"`
+}
+
 type Repository interface {
 	Create(ctx context.Context, user *User) error
 	FindByID(ctx context.Context, id string) (*User, error)
@@ -50,7 +63,15 @@ type Repository interface {
 	// Membership operations
 	AddToOrg(ctx context.Context, userID, orgID, roleID string) error
 	GetMember(ctx context.Context, userID, orgID string) (*Member, error)
+	GetMemberID(ctx context.Context, userID, orgID string) (string, error)
 	ListMembers(ctx context.Context, orgID string, limit, offset int) ([]*Member, int64, error)
 	UpdateMemberRole(ctx context.Context, userID, orgID, roleID string) error
+	UpdateMemberProfile(ctx context.Context, userID, orgID, fullName, email string) error
+	UpdateMemberPassword(ctx context.Context, userID, newPasswordHash string) error
 	DeactivateMember(ctx context.Context, userID, orgID string) error
+	ReactivateMember(ctx context.Context, userID, orgID string) error
+
+	// Permission overrides
+	GetMemberPermissionOverrides(ctx context.Context, memberID string) ([]PermissionOverride, error)
+	SetMemberPermissionOverrides(ctx context.Context, memberID string, overrides []PermissionOverride) error
 }

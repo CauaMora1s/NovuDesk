@@ -60,6 +60,13 @@ func (r *roleRepo) ListByOrg(ctx context.Context, orgID string) ([]*role.Role, e
 	return roles, err
 }
 
+func (r *roleRepo) Update(ctx context.Context, ro *role.Role) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE roles SET name = $2 WHERE id = $1 AND is_system_role = false`,
+		ro.ID, ro.Name)
+	return err
+}
+
 func (r *roleRepo) Delete(ctx context.Context, id, orgID string) error {
 	_, err := r.db.ExecContext(ctx,
 		`DELETE FROM roles WHERE id = $1 AND org_id = $2 AND is_system_role = false`, id, orgID)

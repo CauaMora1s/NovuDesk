@@ -9,6 +9,7 @@ import (
 	teamsvc "github.com/novudesk/novudesk/internal/application/team"
 	usersvc "github.com/novudesk/novudesk/internal/application/user"
 	"github.com/novudesk/novudesk/internal/domain/role"
+	userdomain "github.com/novudesk/novudesk/internal/domain/user"
 	"github.com/novudesk/novudesk/internal/interfaces/http/middleware"
 	"github.com/novudesk/novudesk/internal/interfaces/http/respond"
 	"github.com/novudesk/novudesk/pkg/pagination"
@@ -148,4 +149,133 @@ func (h *MemberHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.Ok(w, roles)
+}
+
+// Activate re-enables a previously deactivated member.
+func (h *MemberHandler) Activate(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	userID := chi.URLParam(r, "id")
+
+	if err := h.users.Reactivate(r.Context(), userID, claims.OrgID); err != nil {
+		respond.Error(w, err)
+		return
+	}
+
+	member, err := h.users.GetMember(r.Context(), userID, claims.OrgID)
+	if err != nil {
+		respond.Error(w, err)
+		return
+	}
+	respond.Ok(w, member)
+}
+
+type updateProfileRequest struct {
+	FullName string `json:"full_name" validate:"required,min=2,max=255"`
+	Email    string `json:"email"     validate:"required,email"`
+}
+
+// UpdateProfile updates a member's full name and email.
+func (h *MemberHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	userID := chi.URLParam(r, "id")
+
+	var req updateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, err)
+		return
+	}
+	if errs := validator.Validate(req); errs != nil {
+		respond.ValidationError(w, errs)
+		return
+	}
+
+	if err := h.users.UpdateProfile(r.Context(), userID, claims.OrgID, req.FullName, req.Email); err != nil {
+		respond.Error(w, err)
+		return
+	}
+
+	member, err := h.users.GetMember(r.Context(), userID, claims.OrgID)
+	if err != nil {
+		respond.Error(w, err)
+		return
+	}
+	respond.Ok(w, member)
+}
+
+type updatePasswordRequest struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+// UpdatePassword sets a new password for a member.
+func (h *MemberHandler) UpdatePassword(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	userID := chi.URLParam(r, "id")
+
+	var req updatePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, err)
+		return
+	}
+	if errs := validator.Validate(req); errs != nil {
+		respond.ValidationError(w, errs)
+		return
+	}
+
+	if err := h.users.UpdatePassword(r.Context(), userID, claims.OrgID, req.NewPassword); err != nil {
+		respond.Error(w, err)
+		return
+	}
+	respond.NoContent(w)
+}
+
+// GetPermissions returns a member's effective permissions (role + overrides).
+func (h *MemberHandler) GetPermissions(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	userID := chi.URLParam(r, "id")
+
+	effective, err := h.users.GetEffectivePermissions(r.Context(), userID, claims.OrgID)
+	if err != nil {
+		respond.Error(w, err)
+		return
+	}
+	respond.Ok(w, effective)
+}
+
+type permissionOverrideInput struct {
+	PermissionKey string `json:"permission_key" validate:"required"`
+	IsGranted     bool   `json:"is_granted"`
+}
+
+type setPermissionOverridesRequest struct {
+	Overrides []permissionOverrideInput `json:"overrides" validate:"required"`
+}
+
+// SetPermissions replaces all per-member permission overrides.
+func (h *MemberHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	userID := chi.URLParam(r, "id")
+
+	var req setPermissionOverridesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, err)
+		return
+	}
+	if errs := validator.Validate(req); errs != nil {
+		respond.ValidationError(w, errs)
+		return
+	}
+
+	overrides := make([]userdomain.PermissionOverride, len(req.Overrides))
+	for i, o := range req.Overrides {
+		overrides[i] = userdomain.PermissionOverride{
+			PermissionKey: o.PermissionKey,
+			IsGranted:     o.IsGranted,
+		}
+	}
+
+	if err := h.users.SetPermissionOverrides(r.Context(), userID, claims.OrgID, overrides); err != nil {
+		respond.Error(w, err)
+		return
+	}
+	respond.NoContent(w)
 }
