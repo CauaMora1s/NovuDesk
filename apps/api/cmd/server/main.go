@@ -119,7 +119,7 @@ func main() {
 	sseManager := sse.NewManager(eventBus, log)
 
 	// ─── HTTP server ──────────────────────────────────────────
-	handler := httpserver.NewRouter(
+	apiHandler := httpserver.NewRouter(
 		authHandler,
 		ticketHandler,
 		memberHandler,
@@ -132,9 +132,17 @@ func main() {
 		cfg.CORS.AllowedOrigins,
 	)
 
+	// In local storage mode the provider generates URLs like /files/<key>.
+	// We mount a plain FileServer at that prefix so downloads work without S3.
+	mux := http.NewServeMux()
+	if cfg.Storage.Driver != "s3" {
+		mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(cfg.Storage.LocalPath))))
+	}
+	mux.Handle("/", apiHandler)
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.App.Port),
-		Handler:      handler,
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
