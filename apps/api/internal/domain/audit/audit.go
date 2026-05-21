@@ -19,6 +19,7 @@ type Log struct {
 	OrgID        string          `db:"org_id"`
 	ActorID      *string         `db:"actor_id"`
 	ActorType    ActorType       `db:"actor_type"`
+	ActorName    *string         `db:"actor_name"`
 	ResourceType string          `db:"resource_type"`
 	ResourceID   string          `db:"resource_id"`
 	Action       string          `db:"action"`

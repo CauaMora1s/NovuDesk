@@ -41,6 +41,7 @@ export interface CreateTicketInput {
 	title: string;
 	description?: string;
 	priority?: TicketPriority;
+	category_id?: string;
 	assignee_id?: string;
 	team_id?: string;
 	sla_policy_id?: string;

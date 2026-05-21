@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { _ } from 'svelte-i18n';
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { ticketsApi, type Ticket, type TicketStatus } from '$lib/api/tickets';
 	import { can } from '$lib/permissions';
+	import { pollingInterval } from '$lib/stores/polling';
+	import PollingControl from '$lib/components/PollingControl.svelte';
 
 	let tickets: Ticket[] = [];
 	let loading = true;
@@ -17,9 +20,8 @@
 		{ key: 'resolved', label: 'tickets.tabs.resolved' }
 	];
 
-	async function loadTickets() {
-		loading = true;
-		error = '';
+	async function loadTickets(silent = false) {
+		if (!silent) { loading = true; error = ''; }
 		try {
 			const result = await ticketsApi.list({
 				status: activeStatus || undefined,
@@ -27,13 +29,22 @@
 			});
 			tickets = Array.isArray(result) ? result : [];
 		} catch (e: unknown) {
-			error = 'Não foi possível carregar os tickets.';
+			if (!silent) error = 'Não foi possível carregar os tickets.';
 		} finally {
 			loading = false;
 		}
 	}
 
 	$: activeStatus, searchQuery, loadTickets();
+
+	let timer: ReturnType<typeof setInterval> | null = null;
+
+	$: {
+		if (timer) clearInterval(timer);
+		timer = $pollingInterval > 0 ? setInterval(() => loadTickets(true), $pollingInterval) : null;
+	}
+
+	onMount(() => () => { if (timer) clearInterval(timer); });
 
 	function statusClass(status: TicketStatus) {
 		return `status-badge status-${status.replace('_', '-')}`;
@@ -74,14 +85,17 @@
 				{tickets.length} ticket{tickets.length !== 1 ? 's' : ''}
 			</p>
 		</div>
-		{#if can('tickets:create')}
-			<a href="/tickets/new" class="btn btn-primary btn-sm gap-2">
-				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-				</svg>
-				{$_('tickets.new')}
-			</a>
-		{/if}
+		<div class="flex items-center gap-3">
+			<PollingControl />
+			{#if can('tickets:create')}
+				<a href="/tickets/new" class="btn btn-primary btn-sm gap-2">
+					<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					</svg>
+					{$_('tickets.new')}
+				</a>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Filters -->

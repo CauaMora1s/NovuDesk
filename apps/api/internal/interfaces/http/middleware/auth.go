@@ -65,6 +65,16 @@ func ClaimsFromContext(ctx context.Context) *authsvc.Claims {
 	return claims
 }
 
+// WithClaims returns a copy of ctx with the given claims stored under the
+// same key used by the Authenticate middleware. Intended for use in tests.
+func WithClaims(ctx context.Context, claims *authsvc.Claims) context.Context {
+	return context.WithValue(ctx, claimsKey, claims)
+}
+
+// TestInjectClaims is an alias for WithClaims with an explicit name that
+// signals test-only use at the call site.
+var TestInjectClaims = WithClaims
+
 func extractBearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
 	if !strings.HasPrefix(header, "Bearer ") {

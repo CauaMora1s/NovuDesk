@@ -1,15 +1,18 @@
 <script lang="ts">
 	import { _ } from 'svelte-i18n';
+	import { onMount } from 'svelte';
 	import { ticketsApi } from '$lib/api/tickets';
 	import type { Ticket } from '$lib/api/tickets';
+	import { pollingInterval } from '$lib/stores/polling';
+	import PollingControl from '$lib/components/PollingControl.svelte';
 
 	let openCount = 0;
 	let slaBreachedCount = 0;
 	let recentTickets: Ticket[] = [];
 	let loading = true;
 
-	async function loadDashboard() {
-		loading = true;
+	async function loadDashboard(silent = false) {
+		if (!silent) loading = true;
 		try {
 			const [open, _breached, recent] = await Promise.all([
 				ticketsApi.list({ status: 'open', per_page: 1 }),
@@ -25,8 +28,16 @@
 		}
 	}
 
-	// Fires once at component init — no onMount needed
 	$: loadDashboard();
+
+	let timer: ReturnType<typeof setInterval> | null = null;
+
+	$: {
+		if (timer) clearInterval(timer);
+		timer = $pollingInterval > 0 ? setInterval(() => loadDashboard(true), $pollingInterval) : null;
+	}
+
+	onMount(() => () => { if (timer) clearInterval(timer); });
 
 	const stats = [
 		{ label: 'dashboard.openTickets',   value: () => openCount,        color: 'text-info' },
@@ -45,9 +56,12 @@
 
 <div class="p-8 max-w-6xl mx-auto">
 	<!-- Page header -->
-	<div class="mb-8">
-		<h1 class="text-2xl font-bold">{$_('dashboard.title')}</h1>
-		<p class="text-base-content/50 text-sm mt-1">Visão geral do seu atendimento</p>
+	<div class="flex items-center justify-between mb-8">
+		<div>
+			<h1 class="text-2xl font-bold">{$_('dashboard.title')}</h1>
+			<p class="text-base-content/50 text-sm mt-1">Visão geral do seu atendimento</p>
+		</div>
+		<PollingControl />
 	</div>
 
 	<!-- Stats row -->

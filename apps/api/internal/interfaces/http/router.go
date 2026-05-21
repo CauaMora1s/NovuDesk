@@ -14,14 +14,15 @@ import (
 )
 
 type Router struct {
-	auth       *handlers.AuthHandler
-	tickets    *handlers.TicketHandler
-	members    *handlers.MemberHandler
-	teams      *handlers.TeamHandler
-	categories *handlers.CategoryHandler
-	comments   *handlers.CommentHandler
-	sseManager *sse.Manager
-	authSvc    *authsvc.Service
+	auth        *handlers.AuthHandler
+	tickets     *handlers.TicketHandler
+	members     *handlers.MemberHandler
+	teams       *handlers.TeamHandler
+	categories  *handlers.CategoryHandler
+	comments    *handlers.CommentHandler
+	attachments *handlers.AttachmentHandler
+	sseManager  *sse.Manager
+	authSvc     *authsvc.Service
 	corsOrigins []string
 }
 
@@ -32,6 +33,7 @@ func NewRouter(
 	teams *handlers.TeamHandler,
 	categories *handlers.CategoryHandler,
 	comments *handlers.CommentHandler,
+	attachments *handlers.AttachmentHandler,
 	sseManager *sse.Manager,
 	authSvc *authsvc.Service,
 	corsOrigins []string,
@@ -84,6 +86,10 @@ func NewRouter(
 				// Comments / timeline (nested under ticket)
 				r.With(middleware.RequirePermission("tickets:view")).Get("/{id}/comments", comments.List)
 				r.Post("/{id}/comments", comments.Create)
+
+				// Attachments (nested under ticket)
+				r.With(middleware.RequirePermission("tickets:view")).Get("/{id}/attachments", attachments.List)
+				r.Post("/{id}/attachments", attachments.Upload)
 			})
 
 			// Members

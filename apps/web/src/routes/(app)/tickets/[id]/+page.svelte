@@ -7,12 +7,17 @@
 	import { commentsApi, type TimelineItem } from '$lib/api/comments';
 	import { categoriesApi, type Category } from '$lib/api/categories';
 	import { membersApi, type Member } from '$lib/api/members';
+	import { attachmentsApi, type Attachment } from '$lib/api/attachments';
 	import { can } from '$lib/permissions';
+	import { pollingInterval } from '$lib/stores/polling';
+	import PollingControl from '$lib/components/PollingControl.svelte';
+	import FileUpload from '$lib/components/FileUpload.svelte';
 
 	let ticket: Ticket | null = null;
 	let timeline: TimelineItem[] = [];
 	let categories: Category[] = [];
 	let orgMembers: Member[] = [];
+	let attachments: Attachment[] = [];
 
 	let loading = true;
 	let error = '';
@@ -20,12 +25,15 @@
 	let isInternal = false;
 	let submittingComment = false;
 
+	let fileUploadRef: FileUpload;
+
 	$: ticketId = $page.params.id;
 	$: currentUserId = $authStore.user?.id ?? '';
 	$: isTeamMember = $authStore.teamIds.length > 0;
 	$: isAdmin = $authStore.role === 'owner' || $authStore.role === 'admin';
 	$: canManageTicket = isAdmin || isTeamMember;
 
+	// Reload when ticket ID changes (navigation between tickets) — same as original
 	$: if (ticketId) loadAll();
 
 	async function loadAll() {
@@ -34,9 +42,10 @@
 		ticket = null;
 		timeline = [];
 		try {
-			[ticket, timeline] = await Promise.all([
+			[ticket, timeline, attachments] = await Promise.all([
 				ticketsApi.get(ticketId),
-				commentsApi.list(ticketId)
+				commentsApi.list(ticketId),
+				attachmentsApi.list(ticketId)
 			]);
 			if (canManageTicket) {
 				[categories, orgMembers] = await Promise.all([
@@ -50,6 +59,16 @@
 			loading = false;
 		}
 	}
+
+	let timer: ReturnType<typeof setInterval> | null = null;
+
+	$: {
+		if (timer) clearInterval(timer);
+		timer = $pollingInterval > 0 ? setInterval(refreshData, $pollingInterval) : null;
+	}
+
+	onMount(() => () => { if (timer) clearInterval(timer); });
+
 
 	async function changeStatus(status: TicketStatus) {
 		if (!ticket) return;
@@ -79,6 +98,24 @@
 		} catch { /* handle silently */ }
 	}
 
+	async function refreshData() {
+		if (!ticketId || loading) return;
+		try {
+			const [newTicket, newTimeline, newAttachments] = await Promise.all([
+				ticketsApi.get(ticketId),
+				commentsApi.list(ticketId),
+				attachmentsApi.list(ticketId)
+			]);
+			if (ticket && JSON.stringify(newTicket) !== JSON.stringify(ticket)) ticket = newTicket;
+			const existingIds = new Set(timeline.map(i => i.id));
+			const added = newTimeline.filter(i => !existingIds.has(i.id));
+			if (added.length > 0) timeline = [...timeline, ...added];
+			const existingAttIds = new Set(attachments.map(a => a.id));
+			const addedAtts = newAttachments.filter(a => !existingAttIds.has(a.id));
+			if (addedAtts.length > 0) attachments = [...attachments, ...addedAtts];
+		} catch { /* silent */ }
+	}
+
 	async function sendComment() {
 		if (!ticket || !commentBody.trim()) return;
 		submittingComment = true;
@@ -86,6 +123,12 @@
 			const item = await commentsApi.create(ticket.id, { body: commentBody.trim(), is_internal: isInternal });
 			timeline = [...timeline, item];
 			commentBody = '';
+
+			if (fileUploadRef) {
+				const uploaded = await fileUploadRef.uploadAll();
+				attachments = [...attachments, ...uploaded];
+			}
+
 			setTimeout(() => {
 				const el = document.getElementById('timeline-end');
 				el?.scrollIntoView({ behavior: 'smooth' });
@@ -119,14 +162,81 @@
 		return $_('tickets.openDuration.days', { values: { count: Math.floor(hours / 24) } });
 	}
 
-	const activityKeys: Record<string, string> = {
-		'ticket.created':          'tickets.activity.created',
-		'ticket.status_changed':   'tickets.activity.statusChanged',
-		'ticket.assigned':         'tickets.activity.assigned',
-		'ticket.category_changed': 'tickets.activity.categoryChanged',
-		'ticket.priority_changed': 'tickets.activity.priorityChanged',
-		'ticket.updated':          'tickets.activity.updated'
+	type ActivityDetail = {
+		label: string;
+		badge?: { text: string; css: string };
+		value?: string;
 	};
+
+	function describeActivity(item: TimelineItem): ActivityDetail {
+		const before = item.before as Record<string, unknown> | undefined;
+		const after  = item.after  as Record<string, unknown> | undefined;
+
+		if (item.action === 'ticket.created') {
+			return { label: $_('tickets.activity.created') };
+		}
+
+		if (before && after) {
+			if (before.status !== after.status) {
+				const s = after.status as TicketStatus;
+				return {
+					label: $_('tickets.activity.statusChangedTo'),
+					badge: { text: $_(  `tickets.status.${s}`), css: statusColors[s] ?? 'badge badge-sm' }
+				};
+			}
+			if (before.priority !== after.priority) {
+				const p = after.priority as string;
+				return {
+					label: $_('tickets.activity.priorityChangedTo'),
+					badge: { text: $_(  `tickets.priority.${p}`), css: `status-badge priority-${p}` }
+				};
+			}
+			if (before.assignee_id !== after.assignee_id) {
+				if (after.assignee_id) {
+					return {
+						label: $_('tickets.activity.assignedTo'),
+						value: lookupMemberName(after.assignee_id)
+					};
+				}
+				return { label: $_('tickets.activity.unassignedTicket') };
+			}
+			if (before.category_id !== after.category_id) {
+				if (after.category_id) {
+					return {
+						label: $_('tickets.activity.categoryChangedTo'),
+						value: lookupCategoryName(after.category_id)
+					};
+				}
+				return { label: $_('tickets.activity.categoryRemoved') };
+			}
+		}
+
+		const fallbackKey = item.action ?? '';
+		const i18nKeys: Record<string, string> = {
+			'ticket.status_changed':   'tickets.activity.statusChanged',
+			'ticket.assigned':         'tickets.activity.assigned',
+			'ticket.category_changed': 'tickets.activity.categoryChanged',
+			'ticket.priority_changed': 'tickets.activity.priorityChanged',
+			'ticket.updated':          'tickets.activity.updated'
+		};
+		return { label: i18nKeys[fallbackKey] ? $_(i18nKeys[fallbackKey]) : fallbackKey };
+	}
+
+	function lookupMemberName(id: unknown): string {
+		if (!id) return '';
+		const sid = String(id);
+		const name = orgMembers.find(m => m.id === sid)?.full_name
+			?? (ticket?.assignee_id === sid ? (ticket?.assignee_name ?? '') : '');
+		return name || sid;
+	}
+
+	function lookupCategoryName(id: unknown): string {
+		if (!id) return '';
+		const sid = String(id);
+		const name = categories.find(c => c.id === sid)?.name
+			?? (ticket?.category_id === sid ? (ticket?.category_name ?? '') : '');
+		return name || sid;
+	}
 
 	function initials(name: string | undefined | null): string {
 		if (!name) return '?';
@@ -147,6 +257,12 @@
 		high:   'priority-high',
 		urgent: 'priority-urgent'
 	};
+
+	function formatBytes(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
 </script>
 
 <svelte:head>
@@ -154,14 +270,15 @@
 </svelte:head>
 
 <div class="p-6 max-w-5xl mx-auto">
-	<!-- Back -->
-	<div class="mb-5">
+	<!-- Back + polling -->
+	<div class="flex items-center justify-between mb-5">
 		<a href="/tickets" class="inline-flex items-center gap-1.5 text-sm text-base-content/50 hover:text-base-content transition-colors">
 			<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 			</svg>
 			{$_('tickets.backToAll')}
 		</a>
+		<PollingControl />
 	</div>
 
 	{#if loading}
@@ -196,7 +313,7 @@
 								<h1 class="text-xl font-bold">{ticket.title}</h1>
 							</div>
 
-							{#if can('tickets:change_status')}
+							{#if canManageTicket && can('tickets:change_status')}
 								<div class="dropdown dropdown-end shrink-0">
 									<button class="btn btn-sm btn-outline gap-1">
 										{$_('tickets.changeStatus')}
@@ -272,11 +389,21 @@
 								</div>
 							{:else}
 								<!-- Activity event -->
+								{@const detail = describeActivity(item)}
 								<div class="flex items-center gap-3 px-2 py-1">
 									<div class="w-px h-4 bg-base-300 ml-4"></div>
-									<div class="flex-1 flex items-center gap-2 text-xs text-base-content/50">
-										<span class="font-medium text-base-content/70">{$_('tickets.systemActor')}</span>
-										<span>{activityKeys[item.action ?? ''] ? $_( activityKeys[item.action ?? '']) : (item.action ?? '')}</span>
+									<div class="flex-1 flex items-center flex-wrap gap-1.5 text-xs text-base-content/50">
+										<span class="font-medium text-base-content/70">
+											{item.actor_type === 'system'
+												? $_('tickets.systemActor')
+												: (item.actor_name ?? $_('tickets.systemActor'))}
+										</span>
+										<span>{detail.label}</span>
+										{#if detail.badge}
+											<span class="{detail.badge.css} !text-xs">{detail.badge.text}</span>
+										{:else if detail.value}
+											<span class="font-medium text-base-content/70">{detail.value}</span>
+										{/if}
 										<span>·</span>
 										<span>{timeAgo(item.created_at)}</span>
 									</div>
@@ -326,6 +453,10 @@
 								class="textarea textarea-bordered w-full min-h-24 resize-none text-sm"
 								class:border-warning={isInternal}
 							></textarea>
+
+							<div class="mt-3">
+								<FileUpload bind:this={fileUploadRef} {ticketId} />
+							</div>
 
 							<div class="flex justify-end mt-3">
 								<button
@@ -391,7 +522,7 @@
 							<div>
 								<dt class="text-xs text-base-content/40 mb-1">{$_('tickets.assigneeLabel')}</dt>
 								<dd>
-									{#if can('tickets:assign')}
+									{#if canManageTicket && can('tickets:assign')}
 										<div class="space-y-1.5">
 											<select
 												class="select select-bordered select-sm w-full text-sm"
@@ -454,6 +585,43 @@
 								</div>
 							{/if}
 						</dl>
+					</div>
+				</div>
+
+				<!-- Attachments card -->
+				<div class="card bg-base-100 shadow-card">
+					<div class="card-body p-5">
+						<h3 class="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-3">{$_('tickets.attachments.title')}</h3>
+
+						{#if attachments.length > 0}
+							<ul class="space-y-2 mb-3">
+								{#each attachments as att}
+									<li class="flex items-center gap-2 text-xs">
+										<svg class="w-3.5 h-3.5 shrink-0 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+												d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+										</svg>
+										<a
+											href={att.url}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="flex-1 truncate hover:text-primary transition-colors"
+											title={att.filename}
+										>
+											{att.filename}
+										</a>
+										<span class="text-base-content/40 shrink-0">{formatBytes(att.size_bytes)}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+
+						{#if can('tickets:create') || can('comments:create_public')}
+							<FileUpload
+								{ticketId}
+								onUploaded={(a) => { attachments = [...attachments, a]; }}
+							/>
+						{/if}
 					</div>
 				</div>
 

@@ -25,6 +25,23 @@ func (r *commentRepo) Create(ctx context.Context, c *comment.Comment) error {
 	return err
 }
 
+func (r *commentRepo) CreateWithAuthor(ctx context.Context, c *comment.Comment) (*comment.Comment, error) {
+	q := `WITH ins AS (
+	        INSERT INTO ticket_comments (id, ticket_id, org_id, author_id, body, is_internal)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        RETURNING *
+	      )
+	      SELECT ins.*, u.full_name AS author_name, u.avatar_url AS author_avatar
+	      FROM ins LEFT JOIN users u ON u.id = ins.author_id`
+	var result comment.Comment
+	err := r.db.GetContext(ctx, &result, q,
+		c.ID, c.TicketID, c.OrgID, c.AuthorID, c.Body, c.IsInternal)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (r *commentRepo) FindByID(ctx context.Context, id, orgID string) (*comment.Comment, error) {
 	var c comment.Comment
 	err := r.db.GetContext(ctx, &c,
