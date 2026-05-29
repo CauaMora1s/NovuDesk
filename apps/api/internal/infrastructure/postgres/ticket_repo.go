@@ -186,8 +186,18 @@ func (r *ticketRepo) List(ctx context.Context, orgID string, f ticket.Filter, li
 		idx++
 	}
 	if f.SLABreached != nil {
-		conds = append(conds, fmt.Sprintf("t.sla_breached = $%d", idx))
-		args = append(args, *f.SLABreached)
+		if *f.SLABreached {
+			// Include both explicitly flagged tickets and those dynamically overdue.
+			conds = append(conds, "(t.sla_breached = TRUE OR (t.sla_resolution_due_at IS NOT NULL AND t.sla_resolution_due_at < NOW() AND t.status NOT IN ('resolved', 'closed')))")
+		} else {
+			conds = append(conds, fmt.Sprintf("t.sla_breached = $%d", idx))
+			args = append(args, false)
+			idx++
+		}
+	}
+	if f.Number != nil {
+		conds = append(conds, fmt.Sprintf("t.number = $%d", idx))
+		args = append(args, *f.Number)
 		idx++
 	}
 
@@ -197,8 +207,16 @@ func (r *ticketRepo) List(ctx context.Context, orgID string, f ticket.Filter, li
 	r.db.GetContext(ctx, &total,
 		fmt.Sprintf(`SELECT COUNT(1) FROM tickets t %s`, where), args...)
 
-	q := fmt.Sprintf(`%s %s ORDER BY t.created_at DESC LIMIT $%d OFFSET $%d`,
-		ticketSelectJoins, where, idx, idx+1)
+	orderBy := "t.created_at DESC"
+	switch f.SortBy {
+	case "updated_at":
+		orderBy = "t.updated_at DESC"
+	case "sla_due":
+		orderBy = "t.sla_resolution_due_at ASC NULLS LAST"
+	}
+
+	q := fmt.Sprintf(`%s %s ORDER BY %s LIMIT $%d OFFSET $%d`,
+		ticketSelectJoins, where, orderBy, idx, idx+1)
 	args = append(args, limit, offset)
 
 	var rows []ticketRow
@@ -215,16 +233,21 @@ func (r *ticketRepo) List(ctx context.Context, orgID string, f ticket.Filter, li
 
 func (r *ticketRepo) Update(ctx context.Context, id, orgID string, input ticket.UpdateInput) (*ticket.Ticket, error) {
 	q := `UPDATE tickets SET
-	          title        = COALESCE($3, title),
-	          description  = COALESCE($4, description),
-	          status       = COALESCE($5::text, status::text)::ticket_status,
-	          priority     = COALESCE($6::text, priority::text)::ticket_priority,
-	          assignee_id  = COALESCE($7, assignee_id),
-	          team_id      = COALESCE($8, team_id),
-	          category_id  = COALESCE($9, category_id),
-	          custom_fields= COALESCE($10::jsonb, custom_fields),
-	          tags         = COALESCE($11, tags),
-	          updated_at   = NOW()
+	          title               = COALESCE($3, title),
+	          description         = COALESCE($4, description),
+	          status              = COALESCE($5::text, status::text)::ticket_status,
+	          priority            = COALESCE($6::text, priority::text)::ticket_priority,
+	          assignee_id         = COALESCE($7, assignee_id),
+	          team_id             = COALESCE($8, team_id),
+	          category_id         = COALESCE($9, category_id),
+	          custom_fields       = COALESCE($10::jsonb, custom_fields),
+	          tags                = COALESCE($11, tags),
+	          resolved_at         = COALESCE($12, resolved_at),
+	          closed_at           = COALESCE($13, closed_at),
+	          sla_policy_id       = CASE WHEN $14 THEN $15 ELSE sla_policy_id END,
+	          sla_response_due_at = CASE WHEN $14 THEN $16 ELSE sla_response_due_at END,
+	          sla_resolution_due_at = CASE WHEN $14 THEN $17 ELSE sla_resolution_due_at END,
+	          updated_at          = NOW()
 	      WHERE id = $1 AND org_id = $2
 	      RETURNING id, org_id, number, title, description, status, priority,
 	                assignee_id, team_id, category_id, requester_id, sla_policy_id,
@@ -255,7 +278,9 @@ func (r *ticketRepo) Update(ctx context.Context, id, orgID string, input ticket.
 	var row ticketRow
 	err := r.db.GetContext(ctx, &row, q, id, orgID,
 		input.Title, input.Description, statusStr, priorityStr,
-		input.AssigneeID, input.TeamID, input.CategoryID, customFieldsStr, tagsArg)
+		input.AssigneeID, input.TeamID, input.CategoryID, customFieldsStr, tagsArg,
+		input.ResolvedAt, input.ClosedAt,
+		input.SetSLA, input.SLAPolicyID, input.SLAResponseDueAt, input.SLAResolutionDueAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

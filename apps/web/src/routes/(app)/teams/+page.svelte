@@ -4,6 +4,8 @@
 	import { teamsApi, type Team, type TeamMember, type TeamDetail } from '$lib/api/teams';
 	import { categoriesApi, type Category } from '$lib/api/categories';
 	import { membersApi, type Member } from '$lib/api/members';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
+	import type { SearchSelectOption } from '$lib/components/ui/SearchSelect.svelte';
 
 	let teams: Team[] = [];
 	let loading = true;
@@ -163,6 +165,19 @@
 			}
 		} catch { /* ignore */ }
 	}
+
+	$: memberOptions = orgMembers.map((m): SearchSelectOption => ({
+		value: m.id,
+		label: m.full_name,
+		sublabel: m.email,
+		avatar: true
+	}));
+
+	$: categoryOptions = orgCategories.map((c): SearchSelectOption => ({
+		value: c.id,
+		label: c.name,
+		sublabel: c.description ?? undefined
+	}));
 
 	function initials(name: string) {
 		return name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
@@ -424,15 +439,16 @@
 			{/if}
 
 			<div class="form-control mb-4">
-				<label class="label pb-1" for="select_member">
+				<label class="label pb-1">
 					<span class="label-text font-medium">{$_('teams.selectMember')}</span>
 				</label>
-				<select id="select_member" bind:value={selectedMemberToAdd} class="select select-bordered">
-					<option value="">{$_('teams.selectMemberPlaceholder')}</option>
-					{#each orgMembers as m}
-						<option value={m.id}>{m.full_name} — {m.email}</option>
-					{/each}
-				</select>
+				<SearchSelect
+					options={memberOptions}
+					bind:value={selectedMemberToAdd}
+					placeholder={$_('teams.selectMemberPlaceholder')}
+					searchPlaceholder="Pesquisar por nome ou e-mail..."
+					size="md"
+				/>
 			</div>
 
 			<div class="modal-action">
@@ -498,15 +514,16 @@
 			{/if}
 
 			<div class="form-control mb-4">
-				<label class="label pb-1" for="select_cat">
+				<label class="label pb-1">
 					<span class="label-text font-medium">{$_('teams.selectCategory')}</span>
 				</label>
-				<select id="select_cat" bind:value={selectedCategoryToAdd} class="select select-bordered">
-					<option value="">{$_('teams.selectCategoryPlaceholder')}</option>
-					{#each orgCategories as c}
-						<option value={c.id}>{c.name}</option>
-					{/each}
-				</select>
+				<SearchSelect
+					options={categoryOptions}
+					bind:value={selectedCategoryToAdd}
+					placeholder={$_('teams.selectCategoryPlaceholder')}
+					searchPlaceholder="Pesquisar categoria..."
+					size="md"
+				/>
 			</div>
 
 			<div class="modal-action">

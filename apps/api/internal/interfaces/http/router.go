@@ -22,6 +22,7 @@ type Router struct {
 	categories  *handlers.CategoryHandler
 	comments    *handlers.CommentHandler
 	attachments *handlers.AttachmentHandler
+	sla         *handlers.SLAHandler
 	sseManager  *sse.Manager
 	authSvc     *authsvc.Service
 	corsOrigins []string
@@ -36,6 +37,7 @@ func NewRouter(
 	categories *handlers.CategoryHandler,
 	comments *handlers.CommentHandler,
 	attachments *handlers.AttachmentHandler,
+	sla *handlers.SLAHandler,
 	sseManager *sse.Manager,
 	authSvc *authsvc.Service,
 	corsOrigins []string,
@@ -142,6 +144,13 @@ func NewRouter(
 				r.With(middleware.RequirePermission("teams:manage")).Post("/", categories.Create)
 				r.With(middleware.RequirePermission("teams:manage")).Patch("/{id}", categories.Update)
 				r.With(middleware.RequirePermission("teams:manage")).Delete("/{id}", categories.Delete)
+			})
+
+			// SLA policies
+			r.Route("/sla-policies", func(r chi.Router) {
+				r.With(middleware.RequirePermission("sla:view")).Get("/", sla.List)
+				r.With(middleware.RequirePermission("sla:manage")).Put("/category/{categoryId}", sla.UpsertForCategory)
+				r.With(middleware.RequirePermission("sla:manage")).Delete("/{id}", sla.Delete)
 			})
 
 		})

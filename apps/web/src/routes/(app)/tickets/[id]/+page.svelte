@@ -7,7 +7,10 @@
 	import { commentsApi, type TimelineItem } from '$lib/api/comments';
 	import { categoriesApi, type Category } from '$lib/api/categories';
 	import { membersApi, type Member } from '$lib/api/members';
+	import { teamsApi, type TeamMember } from '$lib/api/teams';
 	import { attachmentsApi, type Attachment } from '$lib/api/attachments';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
+	import type { SearchSelectOption } from '$lib/components/ui/SearchSelect.svelte';
 	import { can } from '$lib/permissions';
 	import { pollingInterval } from '$lib/stores/polling';
 	import PollingControl from '$lib/components/PollingControl.svelte';
@@ -17,10 +20,12 @@
 	let timeline: TimelineItem[] = [];
 	let categories: Category[] = [];
 	let orgMembers: Member[] = [];
+	let teamMembers: TeamMember[] = [];
 	let attachments: Attachment[] = [];
 
 	let loading = true;
 	let error = '';
+	let ticketError = '';
 	let commentBody = '';
 	let isInternal = false;
 	let submittingComment = false;
@@ -52,6 +57,7 @@
 					categoriesApi.list(),
 					membersApi.list()
 				]);
+				teamMembers = await resolveTeamMembers(ticket);
 			}
 		} catch {
 			error = $_('tickets.notFound');
@@ -59,6 +65,31 @@
 			loading = false;
 		}
 	}
+
+	async function resolveTeamMembers(t: Ticket | null): Promise<TeamMember[]> {
+		if (!t) return [];
+		// Always derive from category_id first — team_id on the ticket is set at creation
+		// time and doesn't update when the category changes, so it can be stale.
+		if (t.category_id) {
+			const allTeams = await teamsApi.list();
+			const teamCats = await Promise.all(
+				allTeams.map((tm) => teamsApi.listCategories(tm.id).then((cats) => ({ team: tm, cats })))
+			);
+			const owner = teamCats.find((tc) => tc.cats.some((c) => c.id === t.category_id));
+			if (owner) return teamsApi.listMembers(owner.team.id);
+		}
+		// Fallback: use team_id when there is no category
+		if (t.team_id) return teamsApi.listMembers(t.team_id);
+		return [];
+	}
+
+	$: categoryOptions = categories.map((c): SearchSelectOption => ({ value: c.id, label: c.name }));
+
+	$: assigneeOptions = (
+		teamMembers.length > 0
+			? teamMembers.map((m): SearchSelectOption => ({ value: m.user_id, label: m.full_name, sublabel: m.email, avatar: true }))
+			: orgMembers.map((m): SearchSelectOption => ({ value: m.id, label: m.full_name, sublabel: m.email, avatar: true }))
+	);
 
 	let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -72,30 +103,47 @@
 
 	async function changeStatus(status: TicketStatus) {
 		if (!ticket) return;
+		ticketError = '';
 		try {
-			ticket = await ticketsApi.update(ticket.id, { status });
-		} catch { /* handle silently */ }
+			await ticketsApi.update(ticket.id, { status });
+			ticket = await ticketsApi.get(ticket.id);
+		} catch {
+			ticketError = $_('tickets.updateError');
+		}
 	}
 
 	async function changeCategory(categoryId: string) {
 		if (!ticket) return;
+		ticketError = '';
 		try {
-			ticket = await ticketsApi.update(ticket.id, { category_id: categoryId || undefined });
-		} catch { /* handle silently */ }
+			await ticketsApi.update(ticket.id, { category_id: categoryId || undefined });
+			ticket = await ticketsApi.get(ticket.id);
+			teamMembers = await resolveTeamMembers(ticket);
+		} catch {
+			ticketError = $_('tickets.updateError');
+		}
 	}
 
 	async function changeAssignee(assigneeId: string) {
 		if (!ticket) return;
+		ticketError = '';
 		try {
-			ticket = await ticketsApi.update(ticket.id, { assignee_id: assigneeId || undefined });
-		} catch { /* handle silently */ }
+			await ticketsApi.update(ticket.id, { assignee_id: assigneeId || undefined });
+			ticket = await ticketsApi.get(ticket.id);
+		} catch {
+			ticketError = $_('tickets.updateError');
+		}
 	}
 
 	async function assignToMe() {
 		if (!ticket || !currentUserId) return;
+		ticketError = '';
 		try {
-			ticket = await ticketsApi.update(ticket.id, { assignee_id: currentUserId });
-		} catch { /* handle silently */ }
+			await ticketsApi.update(ticket.id, { assignee_id: currentUserId });
+			ticket = await ticketsApi.get(ticket.id);
+		} catch {
+			ticketError = $_('tickets.updateError');
+		}
 	}
 
 	async function refreshData() {
@@ -225,7 +273,8 @@
 	function lookupMemberName(id: unknown): string {
 		if (!id) return '';
 		const sid = String(id);
-		const name = orgMembers.find(m => m.id === sid)?.full_name
+		const name = teamMembers.find(m => m.user_id === sid)?.full_name
+			?? orgMembers.find(m => m.id === sid)?.full_name
 			?? (ticket?.assignee_id === sid ? (ticket?.assignee_name ?? '') : '');
 		return name || sid;
 	}
@@ -288,6 +337,9 @@
 	{:else if error || !ticket}
 		<div class="alert alert-error">{error || $_('tickets.notFound')}</div>
 	{:else}
+		{#if ticketError}
+			<div class="alert alert-error mb-4 text-sm py-2">{ticketError}</div>
+		{/if}
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
 			<!-- Main column -->
@@ -500,16 +552,14 @@
 								<dt class="text-xs text-base-content/40 mb-1">{$_('tickets.categoryLabel')}</dt>
 								<dd>
 									{#if canManageTicket && categories.length > 0}
-										<select
-											class="select select-bordered select-sm w-full text-sm"
+										<SearchSelect
+											options={categoryOptions}
 											value={ticket.category_id ?? ''}
-											on:change={(e) => changeCategory((e.target as HTMLSelectElement).value)}
-										>
-											<option value="">{$_('tickets.noCategory')}</option>
-											{#each categories as cat}
-												<option value={cat.id}>{cat.name}</option>
-											{/each}
-										</select>
+											placeholder={$_('tickets.noCategory')}
+											emptyLabel={$_('tickets.noCategory')}
+											searchPlaceholder="Pesquisar categoria..."
+											onChange={changeCategory}
+										/>
 									{:else if ticket.category_name}
 										<span class="badge badge-sm badge-outline">{ticket.category_name}</span>
 									{:else}
@@ -524,16 +574,14 @@
 								<dd>
 									{#if canManageTicket && can('tickets:assign')}
 										<div class="space-y-1.5">
-											<select
-												class="select select-bordered select-sm w-full text-sm"
+											<SearchSelect
+												options={assigneeOptions}
 												value={ticket.assignee_id ?? ''}
-												on:change={(e) => changeAssignee((e.target as HTMLSelectElement).value)}
-											>
-												<option value="">{$_('tickets.unassigned')}</option>
-												{#each orgMembers as m}
-													<option value={m.id}>{m.full_name}</option>
-												{/each}
-											</select>
+												placeholder={$_('tickets.unassigned')}
+												emptyLabel={$_('tickets.unassigned')}
+												searchPlaceholder="Pesquisar por nome ou e-mail..."
+												onChange={changeAssignee}
+											/>
 											{#if !ticket.assignee_id}
 												<button class="btn btn-outline btn-xs w-full" on:click={assignToMe}>
 													{$_('tickets.assignToMe')}
@@ -647,6 +695,25 @@
 							<div>
 								<dt class="text-xs text-base-content/40 mb-0.5">{$_('tickets.createdAt')}</dt>
 								<dd class="text-xs text-base-content/60">{formatDate(ticket.created_at)}</dd>
+							</div>
+							<!-- SLA deadline always shown -->
+							<div>
+								<dt class="text-xs text-base-content/40 mb-0.5">{$_('tickets.slaDueLabel')}</dt>
+								<dd>
+									{#if ticket.sla_resolution_due_at}
+										<span
+											class="text-sm font-medium"
+											class:text-error={ticket.sla_breached || new Date(ticket.sla_resolution_due_at) < new Date()}
+										>
+											{formatDate(ticket.sla_resolution_due_at)}
+										</span>
+										{#if ticket.sla_breached}
+											<span class="badge badge-error badge-xs ml-1">{$_('tickets.slaBreached')}</span>
+										{/if}
+									{:else}
+										<span class="text-xs text-base-content/40">—</span>
+									{/if}
+								</dd>
 							</div>
 						</dl>
 					</div>

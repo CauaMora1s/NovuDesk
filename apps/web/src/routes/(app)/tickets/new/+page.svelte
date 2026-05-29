@@ -3,6 +3,9 @@
 	import { goto } from '$app/navigation';
 	import { ticketsApi, type TicketPriority } from '$lib/api/tickets';
 	import { teamsApi, type Team } from '$lib/api/teams';
+	import { slaApi, type CategorySLAStat } from '$lib/api/sla';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
+	import type { SearchSelectOption } from '$lib/components/ui/SearchSelect.svelte';
 	import type { Category } from '$lib/api/categories';
 	import FileUpload from '$lib/components/FileUpload.svelte';
 
@@ -18,12 +21,17 @@
 	// Teams with their categories for the grouped dropdown
 	type TeamWithCats = { team: Team; categories: Category[] };
 	let teamGroups: TeamWithCats[] = [];
+	let slaStats: CategorySLAStat[] = [];
 
 	$: loadCategories();
 
 	async function loadCategories() {
 		try {
-			const teams = await teamsApi.list();
+			const [teams, stats] = await Promise.all([
+				teamsApi.list(),
+				slaApi.listWithStats().catch(() => [] as CategorySLAStat[])
+			]);
+			slaStats = stats;
 			const groups = await Promise.all(
 				teams.map(async (t) => ({
 					team: t,
@@ -36,6 +44,23 @@
 			// non-critical — dropdown just stays empty
 		}
 	}
+
+	$: selectedSLA = slaStats.find((s) => s.category_id === categoryId && s.sla_id !== null) ?? null;
+	$: selectedTeamId = teamGroups.find((g) => g.categories.some((c) => c.id === categoryId))?.team.id ?? null;
+
+	$: categoryOptions = teamGroups.flatMap((g) =>
+		g.categories.map((cat): SearchSelectOption => ({
+			value: cat.id,
+			label: cat.name,
+			sublabel: g.team.name
+		}))
+	);
+
+	const unitLabels: Record<string, string> = {
+		hours: 'hora(s)',
+		days: 'dia(s)',
+		weeks: 'semana(s)'
+	};
 
 	const priorities: Array<{ value: TicketPriority; label: string }> = [
 		{ value: 'low',    label: 'tickets.priority.low' },
@@ -53,7 +78,8 @@
 				title,
 				description,
 				priority,
-				category_id: categoryId || undefined
+				category_id: categoryId || undefined,
+				team_id: selectedTeamId ?? undefined
 			});
 
 			if (fileUploadRef) {
@@ -133,16 +159,21 @@
 						<label class="label pb-1" for="category">
 							<span class="label-text font-medium">{$_('tickets.categoryLabel')} *</span>
 						</label>
-						<select id="category" bind:value={categoryId} class="select select-bordered w-full" required>
-							<option value="">{$_('tickets.noCategoryOption')}</option>
-							{#each teamGroups as g}
-								<optgroup label={g.team.name}>
-									{#each g.categories as cat}
-										<option value={cat.id}>{cat.name}</option>
-									{/each}
-								</optgroup>
-							{/each}
-						</select>
+						<SearchSelect
+							options={categoryOptions}
+							bind:value={categoryId}
+							placeholder={$_('tickets.noCategoryOption')}
+							searchPlaceholder="Pesquisar categoria..."
+							size="md"
+						/>
+						{#if selectedSLA}
+							<div class="mt-2 flex items-center gap-2 text-xs text-info bg-info/10 border border-info/20 rounded-lg px-3 py-2">
+								<svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								SLA máximo de resolução: <strong>{selectedSLA.resolution_value} {unitLabels[selectedSLA.resolution_unit ?? 'hours']}</strong>
+							</div>
+						{/if}
 					</div>
 				{/if}
 
