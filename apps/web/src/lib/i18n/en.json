@@ -6,6 +6,7 @@
     "edit": "Edit",
     "create": "Create",
     "search": "Search",
+    "select": "Select...",
     "loading": "Loading...",
     "error": "Error",
     "success": "Success",
@@ -82,6 +83,7 @@
     "systemActor": "System",
     "notFound": "Ticket not found.",
     "createError": "Could not create ticket.",
+    "updateError": "Could not update ticket.",
     "noCategoryOption": "No category",
     "categoryOptionalLabel": "Category",
     "status": {
@@ -102,6 +104,18 @@
       "open": "Open",
       "pending": "Pending",
       "resolved": "Resolved"
+    },
+    "filters": {
+      "add": "Filter",
+      "sort": "Sort",
+      "sortNewest": "Newest first",
+      "sortUpdated": "Recently updated",
+      "sortSlaDue": "Closest to SLA deadline",
+      "slaBreached": "SLA Violated",
+      "filterStatus": "Status",
+      "filterPriority": "Priority",
+      "clearAll": "Clear filters",
+      "searchPlaceholder": "Search by title, #number or UUID..."
     },
     "form": {
       "title": "Title",
@@ -216,6 +230,29 @@
     },
     "deactivate": "Deactivate",
     "confirmDeactivate": "Deactivate this member?"
+  },
+  "sla": {
+    "title": "SLA Policies",
+    "subtitle": "Set the maximum resolution time per category",
+    "categoryColumn": "Category",
+    "resolutionColumn": "Resolution Time",
+    "avgColumn": "Avg. Completion",
+    "actionsColumn": "Actions",
+    "noPolicy": "No SLA",
+    "setPolicy": "Set SLA",
+    "editPolicy": "Edit",
+    "removePolicy": "Remove",
+    "valueLabel": "Value",
+    "unitLabel": "Unit",
+    "unit": {
+      "hours": "hours",
+      "days": "days",
+      "weeks": "weeks"
+    },
+    "hint": "Max resolution SLA",
+    "saveError": "Error saving SLA.",
+    "deleteError": "Error removing SLA.",
+    "loadError": "Error loading SLA settings."
   },
   "settings": {
     "title": "Settings",

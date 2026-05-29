@@ -6,6 +6,7 @@
     "edit": "Editar",
     "create": "Criar",
     "search": "Buscar",
+    "select": "Selecionar...",
     "loading": "Carregando...",
     "error": "Erro",
     "success": "Sucesso",
@@ -82,6 +83,7 @@
     "systemActor": "Sistema",
     "notFound": "Ticket não encontrado.",
     "createError": "Não foi possível criar o ticket.",
+    "updateError": "Não foi possível atualizar o ticket.",
     "noCategoryOption": "Sem categoria",
     "categoryOptionalLabel": "Categoria",
     "status": {
@@ -102,6 +104,18 @@
       "open": "Abertos",
       "pending": "Pendentes",
       "resolved": "Resolvidos"
+    },
+    "filters": {
+      "add": "Filtrar",
+      "sort": "Ordenar",
+      "sortNewest": "Mais recente",
+      "sortUpdated": "Atualizado recentemente",
+      "sortSlaDue": "Mais próximo ao SLA",
+      "slaBreached": "SLA Violado",
+      "filterStatus": "Status",
+      "filterPriority": "Prioridade",
+      "clearAll": "Limpar filtros",
+      "searchPlaceholder": "Buscar por título, #número ou UUID..."
     },
     "form": {
       "title": "Título",
@@ -216,6 +230,29 @@
     },
     "deactivate": "Desativar",
     "confirmDeactivate": "Desativar este membro?"
+  },
+  "sla": {
+    "title": "Políticas de SLA",
+    "subtitle": "Defina o tempo máximo de resolução por categoria",
+    "categoryColumn": "Categoria",
+    "resolutionColumn": "Tempo de Resolução",
+    "avgColumn": "Média de Conclusão",
+    "actionsColumn": "Ações",
+    "noPolicy": "Sem SLA",
+    "setPolicy": "Definir SLA",
+    "editPolicy": "Editar",
+    "removePolicy": "Remover",
+    "valueLabel": "Valor",
+    "unitLabel": "Unidade",
+    "unit": {
+      "hours": "horas",
+      "days": "dias",
+      "weeks": "semanas"
+    },
+    "hint": "SLA máximo de resolução",
+    "saveError": "Erro ao salvar SLA.",
+    "deleteError": "Erro ao remover SLA.",
+    "loadError": "Erro ao carregar configurações de SLA."
   },
   "settings": {
     "title": "Configurações",

@@ -68,16 +68,21 @@ type CreateInput struct {
 }
 
 type UpdateInput struct {
-	Title        *string
-	Description  *string
-	Status       *Status
-	Priority     *Priority
-	AssigneeID   *string
-	TeamID       *string
-	CategoryID   *string
-	SLAPolicyID  *string
-	Tags         []string
-	CustomFields json.RawMessage
+	Title              *string
+	Description        *string
+	Status             *Status
+	Priority           *Priority
+	AssigneeID         *string
+	TeamID             *string
+	CategoryID         *string
+	SLAPolicyID        *string
+	Tags               []string
+	CustomFields       json.RawMessage
+	ResolvedAt         *time.Time
+	ClosedAt           *time.Time
+	SetSLA             bool       // when true, overwrite SLA fields (allows clearing to NULL)
+	SLAResponseDueAt   *time.Time
+	SLAResolutionDueAt *time.Time
 }
 
 type Filter struct {
@@ -90,6 +95,8 @@ type Filter struct {
 	Tags        []string
 	Query       string
 	SLABreached *bool
+	Number      *int64 // filter by ticket number
+	SortBy      string // "created_at" | "updated_at" | "sla_due"
 }
 
 type Repository interface {

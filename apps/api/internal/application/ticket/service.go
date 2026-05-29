@@ -66,13 +66,19 @@ func (s *Service) Create(ctx context.Context, input ticket.CreateInput) (*ticket
 		t.Tags = []string{}
 	}
 
-	// Apply SLA due dates if a policy is assigned.
-	if input.SLAPolicyID != nil && s.slas != nil {
-		policy, err := s.slas.FindByID(ctx, *input.SLAPolicyID, input.OrgID)
-		if err == nil && policy != nil {
+	// Apply SLA due dates: explicit policy ID takes precedence, then auto-lookup by category.
+	if s.slas != nil {
+		var policy *sla.Policy
+		if input.SLAPolicyID != nil {
+			policy, _ = s.slas.FindByID(ctx, *input.SLAPolicyID, input.OrgID)
+		} else if input.CategoryID != nil {
+			policy, _ = s.slas.FindByCategoryID(ctx, *input.CategoryID, input.OrgID)
+		}
+		if policy != nil {
 			resp, resol := policy.CalculateDueDates(time.Now())
 			t.SLAResponseDueAt = &resp
 			t.SLAResolutionDueAt = &resol
+			t.SLAPolicyID = &policy.ID
 		}
 	}
 
@@ -133,16 +139,34 @@ func (s *Service) Update(ctx context.Context, id, orgID, actorID string, input t
 		return nil, apperrors.NotFound(apperrors.CodeTicketNotFound, "ticket not found")
 	}
 
-	// Set resolved/closed timestamps based on status change.
+	// Set resolved/closed timestamps on first transition.
 	if input.Status != nil {
 		now := time.Now()
 		switch *input.Status {
 		case ticket.StatusResolved:
 			if before.ResolvedAt == nil {
-				input.Status = input.Status // keep value
+				input.ResolvedAt = &now
 			}
 		case ticket.StatusClosed:
-			_ = now
+			if before.ClosedAt == nil {
+				input.ClosedAt = &now
+			}
+		}
+	}
+
+	// Recalculate SLA when category changes.
+	if input.CategoryID != nil && s.slas != nil {
+		catChanged := before.CategoryID == nil || *before.CategoryID != *input.CategoryID
+		if catChanged {
+			input.SetSLA = true
+			policy, _ := s.slas.FindByCategoryID(ctx, *input.CategoryID, orgID)
+			if policy != nil {
+				resp, resol := policy.CalculateDueDates(time.Now())
+				input.SLAResponseDueAt = &resp
+				input.SLAResolutionDueAt = &resol
+				input.SLAPolicyID = &policy.ID
+			}
+			// if no policy exists for new category, SLA fields remain nil → DB cleared
 		}
 	}
 

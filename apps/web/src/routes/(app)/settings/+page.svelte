@@ -4,6 +4,7 @@
 	import { membersApi, type Member, type PermissionOverride, type EffectivePermissions } from '$lib/api/members';
 	import { rolesApi, type RoleWithPermissions, type Permission } from '$lib/api/roles';
 	import { teamsApi, type Team } from '$lib/api/teams';
+	import { slaApi, type CategorySLAStat, type SLAUnit, formatAvgDuration, formatSLAValue } from '$lib/api/sla';
 	import PermissionMatrix from '$lib/components/ui/PermissionMatrix.svelte';
 
 	let activeTab = 'organization';
@@ -16,6 +17,79 @@
 	] as const;
 
 	$: visibleTabs = tabs.filter((t) => can(t.permission));
+
+	// ── Search state ───────────────────────────────────────────
+	let memberSearch = '';
+	let slaSearch = '';
+
+	$: filteredMembers = memberSearch.trim()
+		? members.filter(
+				(m) =>
+					m.full_name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+					m.email.toLowerCase().includes(memberSearch.toLowerCase())
+			)
+		: members;
+
+	$: filteredSlaStats = slaSearch.trim()
+		? slaStats.filter((s) => s.category_name.toLowerCase().includes(slaSearch.toLowerCase()))
+		: slaStats;
+
+	// ── SLA state ──────────────────────────────────────────────
+	let slaStats: CategorySLAStat[] = [];
+	let slaLoading = false;
+	let slaError = '';
+	let editingCategoryId: string | null = null;
+	let editValue = 1;
+	let editUnit: SLAUnit = 'days';
+	let slaSaving = false;
+
+	async function loadSLAStats() {
+		slaLoading = true;
+		slaError = '';
+		try {
+			slaStats = await slaApi.listWithStats();
+		} catch {
+			slaError = $_('sla.loadError');
+		} finally {
+			slaLoading = false;
+		}
+	}
+
+	function startEditSLA(stat: CategorySLAStat) {
+		editingCategoryId = stat.category_id;
+		editValue = stat.resolution_value ?? 1;
+		editUnit = (stat.resolution_unit as SLAUnit) ?? 'days';
+	}
+
+	function cancelEditSLA() {
+		editingCategoryId = null;
+	}
+
+	async function saveSLA(categoryId: string) {
+		slaSaving = true;
+		try {
+			await slaApi.upsert(categoryId, { resolution_value: editValue, resolution_unit: editUnit });
+			editingCategoryId = null;
+			await loadSLAStats();
+		} catch {
+			slaError = $_('sla.saveError');
+		} finally {
+			slaSaving = false;
+		}
+	}
+
+	async function deleteSLA(stat: CategorySLAStat) {
+		if (!stat.sla_id) return;
+		if (!confirm(`Remover SLA da categoria "${stat.category_name}"?`)) return;
+		try {
+			await slaApi.delete(stat.sla_id);
+			await loadSLAStats();
+		} catch {
+			slaError = $_('sla.deleteError');
+		}
+	}
+
+	$: if (activeTab === 'sla') { slaSearch = ''; loadSLAStats(); }
 
 	// ── Members state ──────────────────────────────────────────
 	let members: Member[] = [];
@@ -62,6 +136,7 @@
 	}
 
 	$: if (activeTab === 'members') {
+		memberSearch = '';
 		loadMembers();
 	}
 
@@ -362,8 +437,34 @@
 						<div class="text-center py-12 text-base-content/40">
 							<p class="text-sm">{$_('settings.noMembers')}</p>
 						</div>
+					{:else if filteredMembers.length === 0}
+						<div class="text-center py-8 text-base-content/40">
+							<p class="text-sm">Nenhum membro encontrado para "<strong>{memberSearch}</strong>".</p>
+						</div>
 					{:else}
-						<div class="overflow-x-auto">
+						<!-- Member search -->
+					<div class="mb-4">
+						<label class="flex items-center gap-2 px-3 py-2 border border-base-300 rounded-lg bg-base-50 focus-within:border-primary transition-colors">
+							<svg class="w-4 h-4 text-base-content/40 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+							</svg>
+							<input
+								type="text"
+								bind:value={memberSearch}
+								placeholder="Pesquisar por nome ou e-mail..."
+								class="grow text-sm bg-transparent outline-none placeholder:text-base-content/40"
+							/>
+							{#if memberSearch}
+								<button type="button" class="text-base-content/40 hover:text-base-content" on:click={() => (memberSearch = '')}>
+									<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+									</svg>
+								</button>
+							{/if}
+						</label>
+					</div>
+
+					<div class="overflow-x-auto">
 							<table class="table table-sm w-full">
 								<thead>
 									<tr class="text-xs text-base-content/50 border-b border-base-200">
@@ -376,7 +477,7 @@
 									</tr>
 								</thead>
 								<tbody>
-									{#each members as m}
+									{#each filteredMembers as m}
 										<tr class="border-b border-base-200/50 hover:bg-base-200/30 transition-colors">
 											<td>
 												<div class="flex items-center gap-3">
@@ -463,7 +564,7 @@
 										<div class="flex items-center justify-between px-4 py-3">
 											<div class="flex items-center gap-3">
 												<span class={roleBadgeClass(r.name)}>{r.name}</span>
-												<span class="badge badge-xs badge-outline text-base-content/40">
+												<span class="badge badge-s badge-outline text-base-content/40">
 													{$_('roles.systemBadge')}
 												</span>
 												<span class="text-xs text-base-content/40">
@@ -533,8 +634,136 @@
 					{/if}
 
 				{:else if activeTab === 'sla'}
-					<h2 class="font-semibold mb-4">{$_('settings.sla')}</h2>
-					<p class="text-sm text-base-content/50">{$_('settings.slaUnderConstruction')}</p>
+					<div class="flex items-center justify-between mb-4">
+						<div>
+							<h2 class="font-semibold">{$_('sla.title')}</h2>
+							<p class="text-sm text-base-content/50 mt-0.5">{$_('sla.subtitle')}</p>
+						</div>
+					</div>
+
+					{#if slaError}
+						<div class="alert alert-error mb-4 text-sm">{slaError}</div>
+					{/if}
+
+					{#if slaLoading}
+						<div class="flex items-center justify-center py-12">
+							<span class="loading loading-spinner loading-md text-primary"></span>
+						</div>
+					{:else if slaStats.length === 0}
+						<p class="text-sm text-base-content/50 py-8 text-center">Nenhuma categoria encontrada. Crie categorias em Times para configurar SLAs.</p>
+					{:else}
+						<!-- SLA search -->
+						<div class="mb-4">
+							<label class="flex items-center gap-2 px-3 py-2 border border-base-300 rounded-lg bg-base-50 focus-within:border-primary transition-colors">
+								<svg class="w-4 h-4 text-base-content/40 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+								</svg>
+								<input
+									type="text"
+									bind:value={slaSearch}
+									placeholder="Pesquisar categoria..."
+									class="grow text-sm bg-transparent outline-none placeholder:text-base-content/40"
+								/>
+								{#if slaSearch}
+									<button type="button" class="text-base-content/40 hover:text-base-content" on:click={() => (slaSearch = '')}>
+										<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+										</svg>
+									</button>
+								{/if}
+							</label>
+						</div>
+
+						{#if filteredSlaStats.length === 0}
+							<p class="text-sm text-base-content/40 py-6 text-center">Nenhuma categoria encontrada para "<strong>{slaSearch}</strong>".</p>
+						{:else}
+						<div class="overflow-x-auto">
+							<table class="table table-sm">
+								<thead>
+									<tr class="text-xs text-base-content/50 uppercase tracking-wide">
+										<th>{$_('sla.categoryColumn')}</th>
+										<th class="w-64">{$_('sla.resolutionColumn')}</th>
+										<th class="w-40">{$_('sla.avgColumn')}</th>
+										<th class="w-32 text-right">{$_('sla.actionsColumn')}</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each filteredSlaStats as stat}
+										<tr class="hover:bg-base-50">
+											<td class="font-medium text-sm">{stat.category_name}</td>
+											<td>
+												{#if editingCategoryId === stat.category_id}
+													<div class="flex items-center gap-2">
+														<input
+															type="number"
+															bind:value={editValue}
+															min="1"
+															max="9999"
+															class="input input-bordered input-sm w-20"
+														/>
+														<select bind:value={editUnit} class="select select-bordered select-sm">
+															<option value="hours">{$_('sla.unit.hours')}</option>
+															<option value="days">{$_('sla.unit.days')}</option>
+															<option value="weeks">{$_('sla.unit.weeks')}</option>
+														</select>
+														<button
+															class="btn btn-primary btn-xs"
+															disabled={slaSaving}
+															on:click={() => saveSLA(stat.category_id)}
+														>
+															{#if slaSaving}
+																<span class="loading loading-spinner loading-xs"></span>
+															{:else}
+																{$_('common.save')}
+															{/if}
+														</button>
+														<button class="btn btn-ghost btn-xs" on:click={cancelEditSLA}>
+															{$_('common.cancel')}
+														</button>
+													</div>
+												{:else if stat.sla_id}
+													<span class="inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+														<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+														</svg>
+														{formatSLAValue(stat.resolution_value, stat.resolution_unit)}
+													</span>
+												{:else}
+													<span class="text-sm text-base-content/40">{$_('sla.noPolicy')}</span>
+												{/if}
+											</td>
+											<td class="text-sm text-base-content/60">
+												{formatAvgDuration(stat.avg_resolution_hours)}
+											</td>
+											<td class="text-right">
+												{#if editingCategoryId !== stat.category_id}
+													<div class="flex items-center justify-end gap-1">
+														{#if can('sla:manage')}
+															<button
+																class="btn btn-ghost btn-xs"
+																on:click={() => startEditSLA(stat)}
+															>
+																{stat.sla_id ? $_('sla.editPolicy') : $_('sla.setPolicy')}
+															</button>
+															{#if stat.sla_id}
+																<button
+																	class="btn btn-ghost btn-xs text-error"
+																	on:click={() => deleteSLA(stat)}
+																>
+																	{$_('sla.removePolicy')}
+																</button>
+															{/if}
+														{/if}
+													</div>
+												{/if}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+						{/if}
+					{/if}
 				{/if}
 
 			</div>

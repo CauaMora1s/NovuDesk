@@ -14,13 +14,14 @@
 	async function loadDashboard(silent = false) {
 		if (!silent) loading = true;
 		try {
-			const [open, _breached, recent] = await Promise.all([
+			const [open, breached, recent] = await Promise.all([
 				ticketsApi.list({ status: 'open', per_page: 1 }),
-				ticketsApi.list({ per_page: 1 }),
+				ticketsApi.list({ sla_breached: true, per_page: 1 }),
 				ticketsApi.list({ per_page: 5 })
 			]);
-			openCount = Array.isArray(open) ? open.length : 0;
-			recentTickets = Array.isArray(recent) ? recent : [];
+			openCount = open.total;
+			slaBreachedCount = breached.total;
+			recentTickets = recent.data;
 		} catch {
 			// handled gracefully
 		} finally {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -17,6 +18,11 @@ import (
 	"github.com/novudesk/novudesk/pkg/pagination"
 	"github.com/novudesk/novudesk/pkg/validator"
 )
+
+func parseInt64(s string) int64 {
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n
+}
 
 type TicketHandler struct {
 	svc       *ticketsvc.Service
@@ -122,11 +128,16 @@ func (h *TicketHandler) List(w http.ResponseWriter, r *http.Request) {
 		Query: q.Get("q"),
 	}
 
-	if s := q.Get("status"); s != "" {
-		filter.Status = []ticket.Status{ticket.Status(s)}
+	// Support multiple values: ?status=open&status=pending
+	for _, s := range q["status"] {
+		if s != "" {
+			filter.Status = append(filter.Status, ticket.Status(s))
+		}
 	}
-	if p := q.Get("priority"); p != "" {
-		filter.Priority = []ticket.Priority{ticket.Priority(p)}
+	for _, p := range q["priority"] {
+		if p != "" {
+			filter.Priority = append(filter.Priority, ticket.Priority(p))
+		}
 	}
 	if a := q.Get("assignee_id"); a != "" {
 		filter.AssigneeID = &a
@@ -136,6 +147,21 @@ func (h *TicketHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	if cat := q.Get("category_id"); cat != "" {
 		filter.CategoryID = &cat
+	}
+	if sb := q.Get("sort"); sb != "" {
+		filter.SortBy = sb
+	}
+	if q.Get("sla_breached") == "true" {
+		t := true
+		filter.SLABreached = &t
+	} else if q.Get("sla_breached") == "false" {
+		f := false
+		filter.SLABreached = &f
+	}
+	if n := q.Get("number"); n != "" {
+		if num := parseInt64(n); num > 0 {
+			filter.Number = &num
+		}
 	}
 
 	// Users with no teams can only see their own tickets.

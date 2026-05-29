@@ -14,6 +14,7 @@ import (
 	catapp "github.com/novudesk/novudesk/internal/application/category"
 	orgapp "github.com/novudesk/novudesk/internal/application/organization"
 	roleapp "github.com/novudesk/novudesk/internal/application/role"
+	slaapp "github.com/novudesk/novudesk/internal/application/sla"
 	teamapp "github.com/novudesk/novudesk/internal/application/team"
 	ticketapp "github.com/novudesk/novudesk/internal/application/ticket"
 	userapp "github.com/novudesk/novudesk/internal/application/user"
@@ -61,6 +62,7 @@ func main() {
 	roleRepo       := postgres.NewRoleRepo(db)
 	teamRepo       := postgres.NewTeamRepo(db)
 	categoryRepo   := postgres.NewCategoryRepo(db)
+	slaRepo        := postgres.NewSLARepo(db)
 	commentRepo    := postgres.NewCommentRepo(db)
 	ticketRepo     := postgres.NewTicketRepo(db)
 	auditRepo      := postgres.NewAuditRepo(db)
@@ -105,8 +107,9 @@ func main() {
 	roleService  := roleapp.NewService(roleRepo)
 	teamService  := teamapp.NewService(teamRepo)
 	catService   := catapp.NewService(categoryRepo)
+	slaService   := slaapp.NewService(slaRepo)
 
-	ticketService := ticketapp.NewService(ticketRepo, nil, auditRepo, eventBus)
+	ticketService := ticketapp.NewService(ticketRepo, slaRepo, auditRepo, eventBus)
 
 	// ─── HTTP handlers ────────────────────────────────────────
 	authHandler       := handlers.NewAuthHandler(authService, userService)
@@ -115,6 +118,7 @@ func main() {
 	roleHandler       := handlers.NewRoleHandler(roleService)
 	teamHandler       := handlers.NewTeamHandler(teamService, catService)
 	categoryHandler   := handlers.NewCategoryHandler(catService)
+	slaHandler        := handlers.NewSLAHandler(slaService)
 	commentHandler    := handlers.NewCommentHandler(commentRepo, auditRepo)
 	attachmentHandler := handlers.NewAttachmentHandler(attachmentRepo, storageProvider)
 
@@ -131,6 +135,7 @@ func main() {
 		categoryHandler,
 		commentHandler,
 		attachmentHandler,
+		slaHandler,
 		sseManager,
 		authService,
 		cfg.CORS.AllowedOrigins,
