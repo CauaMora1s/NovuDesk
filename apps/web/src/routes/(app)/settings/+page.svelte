@@ -5,6 +5,18 @@
 	import { rolesApi, type RoleWithPermissions, type Permission } from '$lib/api/roles';
 	import { teamsApi, type Team } from '$lib/api/teams';
 	import { slaApi, type CategorySLAStat, type SLAUnit, formatAvgDuration, formatSLAValue } from '$lib/api/sla';
+	import {
+		organizationApi,
+		type OrgOverview,
+		type Plan,
+		type PlanTier,
+		type PaymentSession,
+		formatBytes,
+		formatLimit,
+		formatPrice,
+		isUnlimited,
+		usagePercent
+	} from '$lib/api/organization';
 	import PermissionMatrix from '$lib/components/ui/PermissionMatrix.svelte';
 
 	let activeTab = 'organization';
@@ -17,6 +29,146 @@
 	] as const;
 
 	$: visibleTabs = tabs.filter((t) => can(t.permission));
+
+	// ── Organization state ─────────────────────────────────────
+	let overview: OrgOverview | null = null;
+	let plans: Plan[] = [];
+	let orgLoading = false;
+	let orgError = '';
+
+	let editingOrgName = false;
+	let orgNameDraft = '';
+	let orgNameSaving = false;
+
+	let showPlanModal = false;
+	let planActionLoading = false;
+	let sessionActionLoading = false;
+	let billingHistory: PaymentSession[] = [];
+
+	async function loadOrganization() {
+		orgLoading = true;
+		orgError = '';
+		try {
+			[overview, plans, billingHistory] = await Promise.all([
+				organizationApi.getOverview(),
+				organizationApi.listPlans(),
+				can('organization:view_settings') ? organizationApi.sessionHistory() : Promise.resolve([])
+			]);
+		} catch {
+			orgError = $_('organization.loadError');
+		} finally {
+			orgLoading = false;
+		}
+	}
+
+	$: if (activeTab === 'organization') {
+		loadOrganization();
+	}
+
+	function startEditOrgName() {
+		if (!overview) return;
+		orgNameDraft = overview.organization.name;
+		editingOrgName = true;
+	}
+
+	async function saveOrgName() {
+		if (!overview || !orgNameDraft.trim()) return;
+		orgNameSaving = true;
+		try {
+			const updated = await organizationApi.update({ name: orgNameDraft.trim() });
+			overview = { ...overview, organization: updated };
+			editingOrgName = false;
+		} catch {
+			orgError = $_('organization.renameError');
+		} finally {
+			orgNameSaving = false;
+		}
+	}
+
+	async function initiatePlanChange(tier: PlanTier) {
+		planActionLoading = true;
+		orgError = '';
+		try {
+			await organizationApi.initiatePlanChange(tier);
+			showPlanModal = false;
+			await loadOrganization();
+		} catch {
+			orgError = $_('organization.planChangeError');
+		} finally {
+			planActionLoading = false;
+		}
+	}
+
+	async function confirmSession() {
+		if (!overview?.pending_session) return;
+		sessionActionLoading = true;
+		try {
+			await organizationApi.confirmSession(overview.pending_session.id);
+			await loadOrganization();
+		} catch {
+			orgError = $_('organization.confirmError');
+		} finally {
+			sessionActionLoading = false;
+		}
+	}
+
+	async function cancelSession() {
+		if (!overview?.pending_session) return;
+		sessionActionLoading = true;
+		try {
+			await organizationApi.cancelSession(overview.pending_session.id);
+			await loadOrganization();
+		} catch {
+			orgError = $_('organization.cancelError');
+		} finally {
+			sessionActionLoading = false;
+		}
+	}
+
+	function tierBadgeClass(tier: string): string {
+		const map: Record<string, string> = {
+			free: 'badge-ghost',
+			pro: 'badge-info',
+			business: 'badge-primary',
+			enterprise: 'badge-secondary'
+		};
+		return `badge ${map[tier] ?? 'badge-ghost'}`;
+	}
+
+	function sessionStatusBadge(status: string): string {
+		const map: Record<string, string> = {
+			completed: 'badge-success',
+			pending: 'badge-warning',
+			cancelled: 'badge-ghost',
+			failed: 'badge-error',
+			expired: 'badge-ghost'
+		};
+		return `badge badge-sm ${map[status] ?? 'badge-ghost'}`;
+	}
+
+	function progressClass(pct: number): string {
+		if (pct >= 100) return 'progress-error';
+		if (pct >= 80) return 'progress-warning';
+		return 'progress-primary';
+	}
+
+	const dateFmt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' });
+	function fmtDate(iso: string | null): string {
+		if (!iso) return '—';
+		return dateFmt.format(new Date(iso));
+	}
+
+	// Usage rows derived from the overview snapshot, paired with their plan limit.
+	$: usageRows = overview
+		? [
+				{ key: 'members', current: overview.usage.members, limit: overview.plan.limits.seats, bytes: false },
+				{ key: 'tickets', current: overview.usage.tickets_this_month, limit: overview.plan.limits.tickets_per_month, bytes: false },
+				{ key: 'storage', current: overview.usage.storage_bytes, limit: overview.plan.limits.storage_bytes, bytes: true },
+				{ key: 'teams', current: overview.usage.teams, limit: overview.plan.limits.teams, bytes: false },
+				{ key: 'categories', current: overview.usage.categories, limit: overview.plan.limits.categories, bytes: false },
+				{ key: 'apiKeys', current: overview.usage.api_keys, limit: overview.plan.limits.api_keys, bytes: false }
+			]
+		: [];
 
 	// ── Search state ───────────────────────────────────────────
 	let memberSearch = '';
@@ -80,7 +232,7 @@
 
 	async function deleteSLA(stat: CategorySLAStat) {
 		if (!stat.sla_id) return;
-		if (!confirm(`Remover SLA da categoria "${stat.category_name}"?`)) return;
+		if (!confirm($_('sla.removeConfirm', { values: { name: stat.category_name } }))) return;
 		try {
 			await slaApi.delete(stat.sla_id);
 			await loadSLAStats();
@@ -410,8 +562,165 @@
 			<div class="card-body p-6">
 
 				{#if activeTab === 'organization'}
-					<h2 class="font-semibold mb-4">{$_('settings.organization')}</h2>
-					<p class="text-sm text-base-content/50">{$_('settings.orgUnderConstruction')}</p>
+					<h2 class="font-semibold mb-5">{$_('settings.organization')}</h2>
+
+					{#if orgError}
+						<div class="alert alert-error text-sm mb-4">{orgError}</div>
+					{/if}
+
+					{#if orgLoading && !overview}
+						<div class="flex justify-center py-12">
+							<span class="loading loading-spinner loading-md text-primary"></span>
+						</div>
+					{:else if overview}
+						<div class="space-y-6">
+							<!-- Identity card -->
+							<div class="border border-base-200 rounded-xl p-5">
+								<div class="flex items-start gap-4">
+									<div class="avatar placeholder">
+										<div class="w-14 h-14 rounded-xl bg-primary/10 text-primary text-xl font-bold flex items-center justify-center">
+											{initials(overview.organization.name)}
+										</div>
+									</div>
+									<div class="flex-1 min-w-0">
+										{#if editingOrgName}
+											<div class="flex items-center gap-2">
+												<input
+													type="text"
+													bind:value={orgNameDraft}
+													class="input input-bordered input-sm flex-1"
+													minlength="2"
+													maxlength="255"
+												/>
+												<button class="btn btn-primary btn-sm" disabled={orgNameSaving} on:click={saveOrgName}>
+													{#if orgNameSaving}<span class="loading loading-spinner loading-xs"></span>{:else}{$_('common.save')}{/if}
+												</button>
+												<button class="btn btn-ghost btn-sm" on:click={() => (editingOrgName = false)}>{$_('common.cancel')}</button>
+											</div>
+										{:else}
+											<div class="flex items-center gap-2">
+												<h3 class="text-lg font-semibold truncate">{overview.organization.name}</h3>
+												{#if can('organization:manage_settings')}
+													<button class="btn btn-ghost btn-xs" on:click={startEditOrgName}>{$_('common.edit')}</button>
+												{/if}
+											</div>
+										{/if}
+										<p class="text-sm text-base-content/50 mt-0.5">{overview.organization.slug}</p>
+										<p class="text-xs text-base-content/40 mt-2">
+											{$_('organization.createdAt')}: {fmtDate(overview.organization.created_at)}
+										</p>
+									</div>
+								</div>
+							</div>
+
+							<!-- Plan card -->
+							<div class="border border-base-200 rounded-xl p-5">
+								<div class="flex items-start justify-between gap-4">
+									<div>
+										<p class="text-xs font-semibold text-base-content/40 uppercase tracking-wider mb-2">{$_('organization.currentPlan')}</p>
+										<div class="flex items-center gap-2">
+											<span class={tierBadgeClass(overview.plan.tier)}>{overview.plan.name}</span>
+											{#if overview.plan.price_cents > 0}
+												<span class="text-sm text-base-content/60">{formatPrice(overview.plan.price_cents, overview.plan.currency)}/{$_('organization.perMonth')}</span>
+											{/if}
+										</div>
+										<div class="text-xs text-base-content/50 mt-3 space-y-1">
+											<p>{$_('organization.nextRenewal')}: {fmtDate(overview.organization.plan_renews_at)}</p>
+											<p>
+												{$_('organization.paymentMethod')}:
+												{#if overview.organization.payment_method_brand && overview.organization.payment_method_last4}
+													{overview.organization.payment_method_brand} •••• {overview.organization.payment_method_last4}
+												{:else}
+													<span class="text-base-content/40">{$_('organization.notConfigured')}</span>
+												{/if}
+											</p>
+										</div>
+									</div>
+									{#if can('organization:manage_settings') && !overview.pending_session}
+										<button class="btn btn-outline btn-sm" on:click={() => (showPlanModal = true)}>{$_('organization.changePlan')}</button>
+									{/if}
+								</div>
+
+								<!-- Pending session banner -->
+								{#if overview.pending_session}
+									<div class="alert alert-warning mt-4 flex-col items-start gap-3">
+										<div>
+											<p class="text-sm font-medium">{$_('organization.pendingTitle')}</p>
+											<p class="text-xs mt-1">
+												{$_('organization.pendingDesc', { values: { tier: overview.pending_session.to_tier } })}
+												{#if overview.pending_session.proration_cents > 0}
+													— {$_('organization.proration')}: {formatPrice(overview.pending_session.proration_cents, overview.pending_session.currency)}
+												{/if}
+											</p>
+											<p class="text-xs mt-1 opacity-70">{$_('organization.pendingHint')}</p>
+										</div>
+										{#if can('organization:manage_settings')}
+											<div class="gap-2">
+												<button class="btn btn-success btn-sm w-full" disabled={sessionActionLoading} on:click={confirmSession}>
+													{#if sessionActionLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+													{$_('organization.confirmPayment')}
+												</button>
+												<button class="btn btn-error btn-sm w-full mt-2" disabled={sessionActionLoading} on:click={cancelSession}>{$_('common.cancel')}</button>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+
+							<!-- Usage cards -->
+							<div>
+								<p class="text-xs font-semibold text-base-content/40 uppercase tracking-wider mb-3">{$_('organization.usageTitle')}</p>
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+									{#each usageRows as row}
+										{@const pct = usagePercent(row.current, row.limit)}
+										<div class="border border-base-200 rounded-lg p-4">
+											<div class="flex items-center justify-between mb-2">
+												<span class="text-sm font-medium">{$_('organization.usage.' + row.key)}</span>
+												<span class="text-xs text-base-content/50">
+													{row.bytes ? formatBytes(row.current) : row.current.toLocaleString()}
+													/ {formatLimit(row.limit, row.bytes)}
+												</span>
+											</div>
+											{#if isUnlimited(row.limit)}
+												<p class="text-xs text-base-content/40">{$_('organization.unlimited')}</p>
+											{:else}
+												<progress class="progress {progressClass(pct)} w-full h-1.5" value={pct} max="100"></progress>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							</div>
+
+							<!-- Billing history -->
+							{#if can('organization:view_settings') && billingHistory.length > 0}
+								<div>
+									<p class="text-xs font-semibold text-base-content/40 uppercase tracking-wider mb-3">{$_('organization.billingHistory')}</p>
+									<div class="overflow-x-auto border border-base-200 rounded-xl">
+										<table class="table table-sm">
+											<thead>
+												<tr class="text-xs text-base-content/50">
+													<th>{$_('organization.col.date')}</th>
+													<th>{$_('organization.col.change')}</th>
+													<th>{$_('organization.col.amount')}</th>
+													<th>{$_('organization.col.status')}</th>
+												</tr>
+											</thead>
+											<tbody>
+												{#each billingHistory as s}
+													<tr>
+														<td class="text-sm">{fmtDate(s.created_at)}</td>
+														<td class="text-sm">{s.from_tier ?? '—'} → {s.to_tier}</td>
+														<td class="text-sm">{formatPrice(s.proration_cents > 0 ? s.proration_cents : s.amount_cents, s.currency)}</td>
+														<td><span class={sessionStatusBadge(s.status)}>{$_('organization.status.' + s.status)}</span></td>
+													</tr>
+												{/each}
+											</tbody>
+										</table>
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/if}
 
 				{:else if activeTab === 'members'}
 					<!-- Members header -->
@@ -439,7 +748,7 @@
 						</div>
 					{:else if filteredMembers.length === 0}
 						<div class="text-center py-8 text-base-content/40">
-							<p class="text-sm">Nenhum membro encontrado para "<strong>{memberSearch}</strong>".</p>
+							<p class="text-sm">{$_('settings.noMembersFound', { values: { query: memberSearch } })}</p>
 						</div>
 					{:else}
 						<!-- Member search -->
@@ -451,7 +760,7 @@
 							<input
 								type="text"
 								bind:value={memberSearch}
-								placeholder="Pesquisar por nome ou e-mail..."
+								placeholder={$_('settings.memberSearchPlaceholder')}
 								class="grow text-sm bg-transparent outline-none placeholder:text-base-content/40"
 							/>
 							{#if memberSearch}
@@ -650,7 +959,7 @@
 							<span class="loading loading-spinner loading-md text-primary"></span>
 						</div>
 					{:else if slaStats.length === 0}
-						<p class="text-sm text-base-content/50 py-8 text-center">Nenhuma categoria encontrada. Crie categorias em Times para configurar SLAs.</p>
+						<p class="text-sm text-base-content/50 py-8 text-center">{$_('sla.noCategoriesHint')}</p>
 					{:else}
 						<!-- SLA search -->
 						<div class="mb-4">
@@ -661,7 +970,7 @@
 								<input
 									type="text"
 									bind:value={slaSearch}
-									placeholder="Pesquisar categoria..."
+									placeholder={$_('sla.searchPlaceholder')}
 									class="grow text-sm bg-transparent outline-none placeholder:text-base-content/40"
 								/>
 								{#if slaSearch}
@@ -675,7 +984,7 @@
 						</div>
 
 						{#if filteredSlaStats.length === 0}
-							<p class="text-sm text-base-content/40 py-6 text-center">Nenhuma categoria encontrada para "<strong>{slaSearch}</strong>".</p>
+							<p class="text-sm text-base-content/40 py-6 text-center">{$_('sla.noCategoriesFound', { values: { query: slaSearch } })}</p>
 						{:else}
 						<div class="overflow-x-auto">
 							<table class="table table-sm">
@@ -1149,5 +1458,47 @@
 			</form>
 		</div>
 		<div class="modal-backdrop" on:click={() => (showRoleModal = false)}></div>
+	</dialog>
+{/if}
+
+<!-- ── Modal: Alterar Plano ── -->
+{#if showPlanModal && overview}
+	<dialog class="modal modal-open">
+		<div class="modal-box max-w-3xl">
+			<button
+				class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"
+				on:click={() => (showPlanModal = false)}
+			>✕</button>
+
+			<h3 class="font-bold text-lg mb-1">{$_('organization.changePlan')}</h3>
+			<p class="text-sm text-base-content/50 mb-5">{$_('organization.changePlanHint')}</p>
+
+			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+				{#each plans as p}
+					{@const isCurrent = p.tier === overview.organization.plan_tier}
+					<div class="border rounded-xl p-4 flex flex-col {isCurrent ? 'border-primary bg-primary/5' : 'border-base-200'}">
+						<span class={tierBadgeClass(p.tier)}>{p.name}</span>
+						<p class="text-lg font-bold mt-3">
+							{p.price_cents > 0 ? formatPrice(p.price_cents, p.currency) : p.tier === 'enterprise' ? $_('organization.custom') : $_('organization.freePrice')}
+						</p>
+						<ul class="text-xs text-base-content/60 space-y-1 mt-3 flex-1">
+							<li>{formatLimit(p.limits.seats)} {$_('organization.usage.members').toLowerCase()}</li>
+							<li>{formatLimit(p.limits.tickets_per_month)} {$_('organization.usage.tickets').toLowerCase()}</li>
+							<li>{formatLimit(p.limits.storage_bytes, true)}</li>
+							<li>{formatLimit(p.limits.teams)} {$_('organization.usage.teams').toLowerCase()}</li>
+						</ul>
+						<button
+							class="btn btn-sm mt-4 {isCurrent ? 'btn-disabled' : 'btn-primary'}"
+							disabled={isCurrent || planActionLoading}
+							on:click={() => initiatePlanChange(p.tier)}
+						>
+							{#if planActionLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+							{isCurrent ? $_('organization.currentBadge') : $_('organization.selectPlan')}
+						</button>
+					</div>
+				{/each}
+			</div>
+		</div>
+		<div class="modal-backdrop" on:click={() => (showPlanModal = false)}></div>
 	</dialog>
 {/if}

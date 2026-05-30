@@ -23,6 +23,7 @@ type Router struct {
 	comments    *handlers.CommentHandler
 	attachments *handlers.AttachmentHandler
 	sla         *handlers.SLAHandler
+	org         *handlers.OrganizationHandler
 	sseManager  *sse.Manager
 	authSvc     *authsvc.Service
 	corsOrigins []string
@@ -38,6 +39,7 @@ func NewRouter(
 	comments *handlers.CommentHandler,
 	attachments *handlers.AttachmentHandler,
 	sla *handlers.SLAHandler,
+	org *handlers.OrganizationHandler,
 	sseManager *sse.Manager,
 	authSvc *authsvc.Service,
 	corsOrigins []string,
@@ -151,6 +153,20 @@ func NewRouter(
 				r.With(middleware.RequirePermission("sla:view")).Get("/", sla.List)
 				r.With(middleware.RequirePermission("sla:manage")).Put("/category/{categoryId}", sla.UpsertForCategory)
 				r.With(middleware.RequirePermission("sla:manage")).Delete("/{id}", sla.Delete)
+			})
+
+			// Organization settings, plan and billing
+			r.Route("/organization", func(r chi.Router) {
+				r.With(middleware.RequirePermission("organization:view_settings")).Get("/", org.Get)
+				r.With(middleware.RequirePermission("organization:manage_settings")).Patch("/", org.Update)
+				r.With(middleware.RequirePermission("organization:view_settings")).Get("/plans", org.ListPlans)
+
+				r.Route("/plan/sessions", func(r chi.Router) {
+					r.With(middleware.RequirePermission("organization:view_settings")).Get("/", org.ListSessions)
+					r.With(middleware.RequirePermission("organization:manage_settings")).Post("/", org.InitiatePlanChange)
+					r.With(middleware.RequirePermission("organization:manage_settings")).Post("/{id}/confirm", org.ConfirmPlanChange)
+					r.With(middleware.RequirePermission("organization:manage_settings")).Post("/{id}/cancel", org.CancelPlanChange)
+				})
 			})
 
 		})

@@ -60,6 +60,21 @@ func (r *orgRepo) Update(ctx context.Context, id string, input organization.Upda
 	return &org, err
 }
 
+func (r *orgRepo) UpdatePlan(ctx context.Context, id string, input organization.PlanUpdate) (*organization.Organization, error) {
+	q := `UPDATE organizations SET
+	          plan_tier      = $2,
+	          plan_renews_at = $3,
+	          updated_at     = NOW()
+	      WHERE id = $1
+	      RETURNING *`
+	var org organization.Organization
+	err := r.db.GetContext(ctx, &org, q, id, input.PlanTier, input.RenewsAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return &org, err
+}
+
 func (r *orgRepo) SlugExists(ctx context.Context, slug string) (bool, error) {
 	var count int
 	err := r.db.GetContext(ctx, &count, `SELECT COUNT(1) FROM organizations WHERE slug = $1`, slug)

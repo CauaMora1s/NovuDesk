@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	quotasvc "github.com/novudesk/novudesk/internal/application/quota"
 	teamsvc "github.com/novudesk/novudesk/internal/application/team"
 	usersvc "github.com/novudesk/novudesk/internal/application/user"
 	"github.com/novudesk/novudesk/internal/domain/role"
@@ -20,10 +21,17 @@ type MemberHandler struct {
 	users *usersvc.Service
 	teams *teamsvc.Service
 	roles role.Repository
+	quota *quotasvc.Service
 }
 
 func NewMemberHandler(users *usersvc.Service, teams *teamsvc.Service, roles role.Repository) *MemberHandler {
 	return &MemberHandler{users: users, teams: teams, roles: roles}
+}
+
+// WithQuota enables seat-limit enforcement on member creation.
+func (h *MemberHandler) WithQuota(q *quotasvc.Service) *MemberHandler {
+	h.quota = q
+	return h
 }
 
 // List returns all members of the organization.
@@ -60,6 +68,13 @@ func (h *MemberHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if errs := validator.Validate(req); errs != nil {
 		respond.ValidationError(w, errs)
 		return
+	}
+
+	if h.quota != nil {
+		if err := h.quota.EnsureWithinLimit(r.Context(), claims.OrgID, quotasvc.ResourceSeats, 1); err != nil {
+			respond.Error(w, err)
+			return
+		}
 	}
 
 	u, err := h.users.Register(r.Context(), usersvc.RegisterInput{
