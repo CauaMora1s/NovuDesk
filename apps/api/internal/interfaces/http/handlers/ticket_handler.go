@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authsvc "github.com/novudesk/novudesk/internal/application/auth"
+	quotasvc "github.com/novudesk/novudesk/internal/application/quota"
 	ticketsvc "github.com/novudesk/novudesk/internal/application/ticket"
 	teamdomain "github.com/novudesk/novudesk/internal/domain/team"
 	"github.com/novudesk/novudesk/internal/domain/ticket"
@@ -27,10 +28,17 @@ func parseInt64(s string) int64 {
 type TicketHandler struct {
 	svc       *ticketsvc.Service
 	teamsRepo teamdomain.Repository
+	quota     *quotasvc.Service
 }
 
 func NewTicketHandler(svc *ticketsvc.Service, teamsRepo teamdomain.Repository) *TicketHandler {
 	return &TicketHandler{svc: svc, teamsRepo: teamsRepo}
+}
+
+// WithQuota enables plan-limit enforcement on ticket creation.
+func (h *TicketHandler) WithQuota(q *quotasvc.Service) *TicketHandler {
+	h.quota = q
+	return h
 }
 
 // isPrivileged performs a real-time DB check to avoid stale JWT team_ids.
@@ -69,6 +77,13 @@ func (h *TicketHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if errs := validator.Validate(req); errs != nil {
 		respond.ValidationError(w, errs)
 		return
+	}
+
+	if h.quota != nil {
+		if err := h.quota.EnsureWithinLimit(r.Context(), claims.OrgID, quotasvc.ResourceTickets, 1); err != nil {
+			respond.Error(w, err)
+			return
+		}
 	}
 
 	priority := req.Priority

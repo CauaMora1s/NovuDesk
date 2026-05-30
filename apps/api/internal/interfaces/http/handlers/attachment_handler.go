@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	quotasvc "github.com/novudesk/novudesk/internal/application/quota"
 	"github.com/novudesk/novudesk/internal/domain/attachment"
 	"github.com/novudesk/novudesk/internal/domain/storage"
 	"github.com/novudesk/novudesk/internal/interfaces/http/middleware"
@@ -18,10 +19,17 @@ import (
 type AttachmentHandler struct {
 	attachments attachment.Repository
 	storage     storage.Provider
+	quota       *quotasvc.Service
 }
 
 func NewAttachmentHandler(attachments attachment.Repository, store storage.Provider) *AttachmentHandler {
 	return &AttachmentHandler{attachments: attachments, storage: store}
+}
+
+// WithQuota enables storage-limit enforcement on upload.
+func (h *AttachmentHandler) WithQuota(q *quotasvc.Service) *AttachmentHandler {
+	h.quota = q
+	return h
 }
 
 // List returns all attachments for a ticket.
@@ -71,6 +79,13 @@ func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	if header.Size > storage.MaxFileSizeBytes {
 		respond.Error(w, apperrors.BadRequest("file exceeds the 25 MB limit"))
 		return
+	}
+
+	if h.quota != nil {
+		if err := h.quota.EnsureWithinLimit(r.Context(), claims.OrgID, quotasvc.ResourceStorage, header.Size); err != nil {
+			respond.Error(w, err)
+			return
+		}
 	}
 
 	fileID := uuid.NewString()

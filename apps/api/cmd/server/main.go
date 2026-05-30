@@ -11,8 +11,10 @@ import (
 
 	"github.com/novudesk/novudesk/config"
 	authapp "github.com/novudesk/novudesk/internal/application/auth"
+	billingapp "github.com/novudesk/novudesk/internal/application/billing"
 	catapp "github.com/novudesk/novudesk/internal/application/category"
 	orgapp "github.com/novudesk/novudesk/internal/application/organization"
+	quotaapp "github.com/novudesk/novudesk/internal/application/quota"
 	roleapp "github.com/novudesk/novudesk/internal/application/role"
 	slaapp "github.com/novudesk/novudesk/internal/application/sla"
 	teamapp "github.com/novudesk/novudesk/internal/application/team"
@@ -67,6 +69,8 @@ func main() {
 	ticketRepo     := postgres.NewTicketRepo(db)
 	auditRepo      := postgres.NewAuditRepo(db)
 	attachmentRepo := postgres.NewAttachmentRepo(db)
+	usageRepo      := postgres.NewUsageRepo(db)
+	paymentRepo    := postgres.NewPaymentSessionRepo(db)
 
 	eventBus := redisinfra.NewEventBus(rdb, log)
 
@@ -101,7 +105,9 @@ func main() {
 	authService.WithOrgRepo(orgRepo)
 	authService.WithTeamRepo(teamRepo)
 
-	_ = orgapp.NewService(orgRepo, userRepo, roleRepo)
+	orgService     := orgapp.NewService(orgRepo, userRepo, roleRepo, usageRepo)
+	quotaService   := quotaapp.NewService(orgRepo, usageRepo)
+	billingService := billingapp.NewService(paymentRepo, orgRepo, billingapp.NewManualProvider())
 
 	userService  := userapp.NewService(userRepo, roleRepo)
 	roleService  := roleapp.NewService(roleRepo)
@@ -113,14 +119,15 @@ func main() {
 
 	// ─── HTTP handlers ────────────────────────────────────────
 	authHandler       := handlers.NewAuthHandler(authService, userService)
-	ticketHandler     := handlers.NewTicketHandler(ticketService, teamRepo)
-	memberHandler     := handlers.NewMemberHandler(userService, teamService, roleRepo)
+	ticketHandler     := handlers.NewTicketHandler(ticketService, teamRepo).WithQuota(quotaService)
+	memberHandler     := handlers.NewMemberHandler(userService, teamService, roleRepo).WithQuota(quotaService)
 	roleHandler       := handlers.NewRoleHandler(roleService)
 	teamHandler       := handlers.NewTeamHandler(teamService, catService)
 	categoryHandler   := handlers.NewCategoryHandler(catService)
 	slaHandler        := handlers.NewSLAHandler(slaService)
 	commentHandler    := handlers.NewCommentHandler(commentRepo, auditRepo)
-	attachmentHandler := handlers.NewAttachmentHandler(attachmentRepo, storageProvider)
+	attachmentHandler := handlers.NewAttachmentHandler(attachmentRepo, storageProvider).WithQuota(quotaService)
+	orgHandler        := handlers.NewOrganizationHandler(orgService, billingService)
 
 	// ─── SSE manager ──────────────────────────────────────────
 	sseManager := sse.NewManager(eventBus, log)
@@ -136,6 +143,7 @@ func main() {
 		commentHandler,
 		attachmentHandler,
 		slaHandler,
+		orgHandler,
 		sseManager,
 		authService,
 		cfg.CORS.AllowedOrigins,

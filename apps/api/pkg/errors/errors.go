@@ -32,6 +32,9 @@ const (
 	CodeEmailTaken         Code = "EMAIL_ALREADY_TAKEN"
 	CodeSlugTaken          Code = "SLUG_ALREADY_TAKEN"
 	CodeSLANotFound        Code = "SLA_POLICY_NOT_FOUND"
+	CodeQuotaExceeded      Code = "QUOTA_EXCEEDED"
+	CodeInvalidPlan        Code = "INVALID_PLAN"
+	CodeSessionNotFound    Code = "PAYMENT_SESSION_NOT_FOUND"
 )
 
 // AppError is a typed application error that carries an HTTP status and error code.
